@@ -1,32 +1,24 @@
-# Homeschool Management API
+# README
 
-Rails 7 API backend for the Homeschool Management platform.
+This README would normally document whatever steps are necessary to get the
+application up and running.
 
-## Documentation
+Things you may want to cover:
 
-Complete project documentation is available in the [homeschool-master-docs](https://github.com/homeschool-master/homeschool-master-docs) repository.
+* Ruby version
 
-## Quick Start
-```bash
-# Install dependencies
-bundle install
+* System dependencies
 
-# Setup database
-rails db:create db:migrate db:seed
+* Configuration
 
-# Start server
-rails server
-```
+* Database creation
 
-API will be available at `http://localhost:3000`
+* Database initialization
 
-## Tech Stack
+* How to run the test suite
 
-- Ruby on Rails 7 (API mode)
-- PostgreSQL
-- Redis
-- Sidekiq
+* Services (job queues, cache servers, search engines, etc.)
 
-## License
+* Deployment instructions
 
-MIT License - see [LICENSE](./LICENSE) file for details.
+* ...
