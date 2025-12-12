@@ -22,3 +22,5 @@ Things you may want to cover:
 * Deployment instructions
 
 * ...
+
+[Homescool Master Docs](https://homeschool-master.github.io/homeschool-master-docs/)
