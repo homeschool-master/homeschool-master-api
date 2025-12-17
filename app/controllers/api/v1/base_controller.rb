@@ -2,7 +2,9 @@
 
 module Api
   module V1
-    class BaseController < ApplicationController
+    # Base controller for all API v1 endpoints.
+    # Handles authentication, authorization, and provides standardized response formatting.
+    # All API controllers should inherit from this class to gain auth and response helpers.    class BaseController < ApplicationController
       include ActionController::HttpAuthentication::Token::ControllerMethods
 
       before_action :authenticate_request
