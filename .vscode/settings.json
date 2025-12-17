@@ -1,0 +1,10 @@
+{
+  "ruby.lint": {
+    "rubocop": {
+      "useBundler": true
+    }
+  },
+  "ruby.useBundler": true,
+  "ruby.useLanguageServer": true,
+  "ruby.intellisense": "rubyLocate"
+}

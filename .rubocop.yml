@@ -1,0 +1,14 @@
+AllCops:
+  NewCops: enable
+  Exclude:
+    - 'db/**/*'
+    - 'bin/**/*'
+    - 'node_modules/**/*'
+    - 'vendor/**/*'
+
+Style/Documentation:
+  Enabled: false
+
+  Style/FrozenStringLiteralComment:
+  Enabled: true
+  EnforcedStyle: always
