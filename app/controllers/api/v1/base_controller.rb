@@ -4,7 +4,8 @@ module Api
   module V1
     # Base controller for all API v1 endpoints.
     # Handles authentication, authorization, and provides standardized response formatting.
-    # All API controllers should inherit from this class to gain auth and response helpers.    class BaseController < ApplicationController
+    # All API controllers should inherit from this class to gain auth and response helpers.
+    class BaseController < ApplicationController
       include ActionController::HttpAuthentication::Token::ControllerMethods
 
       before_action :authenticate_request
@@ -15,20 +16,13 @@ module Api
 
       def authenticate_request
         token = extract_token_from_header
-
-        if token.nil?
-          render_unauthorized('Missing authentiaction token')
-          return
-        end
+        return render_unauthorized('Missing authentiaction token') if token.nil?
 
         decoded = JwtService.decode(token)
-
-        if decoded.nil?
-          render_unauthorized('Invalid or expired token')
-          return
-        end
+        return render_unauthorized('Invalid or expired token') if if decoded.nil?
 
         @current_teacher = Teacher.find_by(id: decoded[:teacher_id])
+        return render_unauthorized('Teacher not found') if @current_teacher.nil?
 
         render_unauthorized(`Account is deactivated`) unless @current_teacher.nil?
       end
