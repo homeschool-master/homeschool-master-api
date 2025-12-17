@@ -82,6 +82,7 @@ module Api
         )
       end
 
+      # rubocop:disable Metrics/MethodLength
       def paginate(collection)
         paginated = collection.page(params[:page]).per(params[:limit] || 20)
         {
@@ -96,6 +97,7 @@ module Api
           }
         }
       end
+      # rubocop:enable Metrics/MethodLength
     end
   end
 end
