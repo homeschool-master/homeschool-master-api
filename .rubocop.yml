@@ -1,5 +1,6 @@
 AllCops:
   NewCops: enable
+  TargetRubyVersion: 3.4
   Exclude:
     - 'db/**/*'
     - 'bin/**/*'
@@ -9,6 +10,6 @@ AllCops:
 Style/Documentation:
   Enabled: false
 
-  Style/FrozenStringLiteralComment:
+Style/FrozenStringLiteralComment:
   Enabled: true
   EnforcedStyle: always
