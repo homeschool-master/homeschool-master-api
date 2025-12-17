@@ -19,7 +19,7 @@ module Api
         return render_unauthorized('Missing authentiaction token') if token.nil?
 
         decoded = JwtService.decode(token)
-        return render_unauthorized('Invalid or expired token') if if decoded.nil?
+        return render_unauthorized('Invalid or expired token') if decoded.nil?
 
         @current_teacher = Teacher.find_by(id: decoded[:teacher_id])
         return render_unauthorized('Teacher not found') if @current_teacher.nil?
