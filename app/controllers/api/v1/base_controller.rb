@@ -35,7 +35,7 @@ module Api
         header = request.headers['Authorization']
         return nil unless header
 
-        header.split(' ').last
+        header.split.last
       end
 
       def render_success(data, status: :ok, meta: nil)
