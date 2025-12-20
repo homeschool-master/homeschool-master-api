@@ -26,9 +26,7 @@ class JwtService
     def decode(token)
       decoded = JWT.decode(token, secret_key, true, { algorithm: ALGORITHM })
       HashWithIndifferentAccess.new(decoded.first)
-    rescue JWT::ExpiredSignature
-      nil
-    rescue JWT::DecodeError
+    rescue JWT::ExpiredSignature, JWT::DecodeError
       nil
     end
 
