@@ -15,7 +15,7 @@ Rails.application.routes.draw do
         post 'email/resend-verification', to: 'email_verification#resend'
       end
 
-      # Protected routes go here
+      # Protected routes
     end
   end
 
