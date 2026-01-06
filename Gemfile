@@ -42,7 +42,7 @@ group :development, :test do
   gem 'factory_bot_rails', '~> 6.2'
   gem 'faker', '~> 3.2'
   gem 'pry-rails'
-  gem 'rspec-rails', '~> 6.0'
+  gem 'rspec-rails', '~> 7.0'
 end
 
 group :development do
@@ -53,4 +53,5 @@ end
 group :test do
   gem 'database_cleaner-active_record', '~> 2.1'
   gem 'shoulda-matchers', '~> 5.3'
+  gem 'rspec-rails', '~> 7.0'
 end
