@@ -3,6 +3,9 @@
 class Teacher < ApplicationRecord
   has_secure_password
 
+  # Associations
+  has_many :refresh_tokens, dependent: :destroy
+
   # Validations
   validates :first_name, presence: true, length: { maximum: 100 }
   validates :last_name, presence: true, length: { maximum: 100 }
