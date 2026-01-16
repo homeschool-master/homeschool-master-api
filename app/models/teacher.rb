@@ -15,7 +15,7 @@ class Teacher < ApplicationRecord
                     format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :password, presence: true,
                        length: { minimum: 8 },
-                       if: :password_required? 
+                       if: :password_required?
   validates :phone, length: { maximum: 20 }, allow_blank: true
 
   # Callbacks
