@@ -67,6 +67,8 @@ class Teacher < ApplicationRecord
   end
 
   # Class methods
+
+  # Finds teacher regardless of email casing. Usefull when resetting pw and email, etc
   def self.find_by_email(email)
     find_by(email: email.downcase)
   end
