@@ -3,17 +3,6 @@
 class Teacher < ApplicationRecord
   has_secure_password
 
-  # Associations (will be added later)
-  has_many :students, dependent: :destroy
-  has_many :calendar_events, dependent: :destroy
-  has_many :assignments, dependent: :destroy
-  has_many :tasks, dependent: :destroy
-  has_many :report_cards, dependent: :destroy
-  has_many :expenses, dependent: :destroy
-  has_many :subjects, dependent: :destroy
-  has_many :lesson_plans, dependent: :destroy
-  has_many :expense_categories, dependent: :destroy
-
   # Validations
   validates :first_name, presence: true, length: { maximum: 100 }
   validates :last_name, presence: true, length: { maximum: 100 }
