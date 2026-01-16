@@ -15,7 +15,7 @@ class Teacher < ApplicationRecord
                     format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :password, presence: true,
                        length: { minimum: 8 },
-                       if: :password_required?
+                       if: :password_required? 
   validates :phone, length: { maximum: 20 }, allow_blank: true
 
   # Callbacks
@@ -77,6 +77,7 @@ class Teacher < ApplicationRecord
     self.email = email.downcase
   end
 
+  # Token sent to user's inbox - proves they own the email address
   def generate_email_verification_token
     self.email_verification_token = SecureRandom.urlsafe_base64(32)
   end
