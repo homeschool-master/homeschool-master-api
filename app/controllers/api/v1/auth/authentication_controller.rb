@@ -15,7 +15,7 @@ module Api
 
             jwt_token = JwtService.encode_refresh_token(teacher.id)
             decoded = JwtService.decode(jwt_token)
-            refresh_token = teacher.refresh_tokens.create!(
+            teacher.refresh_tokens.create!(
               token: jwt_token,
               jti: decoded[:jti],
               expires_at: Time.at(decoded[:exp])
@@ -29,8 +29,7 @@ module Api
 
         private
 
-        def placeholder_method_to_shorten_login_method
-        end
+        def placeholder_method_to_shorten_login_method; end
       end
     end
   end
