@@ -11,17 +11,8 @@ module Api
           authenticated_teacher = teacher&.authenticate(params[:password])
 
           if authenticated_teacher
-            access_token = JwtService.encode({ teacher_id: teacher.id })
-
-            jwt_token = JwtService.encode_refresh_token(teacher.id)
-            decoded = JwtService.decode(jwt_token)
-            teacher.refresh_tokens.create!(
-              token: jwt_token,
-              jti: decoded[:jti],
-              expires_at: Time.at(decoded[:exp])
-            )
-
-            render json: { access_token:, refresh_token: jwt_token }, status: :ok
+            tokens = generate_tokens(teacher)
+            render json: tokens, status: :ok
           else
             render json: { error: 'unauthorized' }, status: :unauthorized
           end
@@ -29,7 +20,19 @@ module Api
 
         private
 
-        def placeholder_method_to_shorten_login_method; end
+        def generate_tokens(teacher)
+          access_token = JwtService.encode({ teacher_id: teacher.id })
+
+          jwt_token = JwtService.encode_refresh_token(teacher.id)
+          decoded = JwtService.decode(jwt_token)
+          teacher.refresh_tokens.create!(
+            token: jwt_token,
+            jti: decoded[:jti],
+            expires_at: Time.at(decoded[:exp])
+          )
+
+          { access_token:, refresh_token: jwt_token }
+        end
       end
     end
   end
