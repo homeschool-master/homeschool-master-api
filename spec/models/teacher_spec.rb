@@ -14,13 +14,14 @@ RSpec.describe Teacher, type: :model do
         expect(teacher).to be_valid
       end
     end
-    # context 'when attributes are invalid' do
-    #   context 'when first name is missing' do
-    #     it 'is invalid' do
-    #       expect(teacher).not_to be_valid
-    #       expect(teacher.errors).to include("can't be blank")
-    #     end
-    #   end
-    # end
+
+    context 'when first name is missing' do
+      let(:teacher) { Teacher.new(first_name: nil, last_name:, email:, password:) }
+
+      it 'is invalid' do
+        expect(teacher).not_to be_valid
+        expect(teacher.errors[:first_name]).to include("can't be blank")
+      end
+    end
   end
 end

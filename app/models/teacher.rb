@@ -7,7 +7,7 @@ class Teacher < ApplicationRecord
   has_many :refresh_tokens, dependent: :destroy
 
   # Validations
-  validates :first_name, presence: true, length: { maximum: 100 }
+  validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }
   validates :last_name, presence: true, length: { maximum: 100 }
   validates :nickname, length: { maximum: 100 }, allow_blank: true
   validates :email, presence: true,
