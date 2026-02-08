@@ -3,25 +3,18 @@
 require 'rails_helper'
 
 RSpec.describe Teacher, type: :model do
-  let(:first_name) { 'robert' }
-  let(:last_name) { 'masters' }
-  let(:email) { 'test@gmail.com' }
-  let(:password) { 'testpassword' }
-  let(:teacher) { Teacher.create!(first_name:, last_name:, email:, password:) }
   describe 'validations' do
-    context 'when attributes are valid' do
-      it 'creates a valid teacher' do
-        expect(teacher).to be_valid
-      end
-    end
+    it { is_expected.to validate_presence_of(:first_name) }
+    it { is_expected.to validate_presence_of(:last_name) }
+    it { is_expected.to validate_presence_of(:email) }
+    it { is_expected.to validate_presence_of(:password) }
+    it { is_expected.to validate_length_of(:first_name).is_at_most(100) }
+    it { is_expected.to validate_length_of(:last_name).is_at_most(100) }
+    it { is_expected.to validate_length_of(:password).is_at_least(8) }
+    it { is_expected.to validate_uniqueness_of(:email).case_insensitive }
+  end
 
-    context 'when first name is missing' do
-      let(:teacher) { Teacher.new(first_name: nil, last_name:, email:, password:) }
-
-      it 'is invalid' do
-        expect(teacher).not_to be_valid
-        expect(teacher.errors[:first_name]).to include("can't be blank")
-      end
-    end
+  describe 'associations' do
+    it { is_expected.to have_many(:refresh_tokens).dependent(:destroy) }
   end
 end
