@@ -34,3 +34,5 @@
 
 #Ignore code coverage reports
 /coverage/
+
+.DS_Store
