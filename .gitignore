@@ -35,4 +35,5 @@
 #Ignore code coverage reports
 /coverage/
 
+#metadata file
 .DS_Store
