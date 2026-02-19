@@ -7,14 +7,13 @@ module Api
         skip_before_action :authenticate_request
 
         def login
-          teacher = Teacher.find_by(email: params[:email])
-          authenticated_teacher = teacher&.authenticate(params[:password])
+          result = AuthenticationService.call(params[:email], params[:password])
 
-          if authenticated_teacher
-            tokens = generate_tokens(teacher)
+          if result[:success]
+            tokens = generate_tokens(result[:teacher])
             render json: tokens, status: :ok
           else
-            render json: { error: 'unauthorized' }, status: :unauthorized
+            render_unauthorized(result[:error])
           end
         end
 
