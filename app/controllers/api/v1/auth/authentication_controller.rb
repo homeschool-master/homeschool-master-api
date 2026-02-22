@@ -4,7 +4,7 @@ module Api
   module V1
     module Auth
       class AuthenticationController < BaseController
-        skip_before_action :authenticate_request, only: %i[login register]
+        skip_before_action :authenticate_request, only: %i[login register refresh]
 
         def login
           result = AuthenticationService.call(params[:email], params[:password])
@@ -24,6 +24,17 @@ module Api
             render_created(teacher_response(teacher))
           else
             render_validation_errors(teacher)
+          end
+        end
+
+        def refresh
+          result = AuthenticationService.refresh(params[:refresh_token])
+
+          if result[:success]
+            access_token = JwtService.encode({ teacher_id: result[:teacher_id] })
+            render json: { access_token: access_token, refresh_token: params[:refresh_token] }, status: :ok
+          else
+            render_unauthorized(result[:error])
           end
         end
 
