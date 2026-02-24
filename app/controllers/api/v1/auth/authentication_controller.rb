@@ -4,7 +4,7 @@ module Api
   module V1
     module Auth
       class AuthenticationController < BaseController
-        skip_before_action :authenticate_request, only: %i[login register refresh]
+        skip_before_action :authenticate_request, only: %i[login register refresh logout]
 
         def login
           result = AuthenticationService.call(params[:email], params[:password])
@@ -36,6 +36,15 @@ module Api
           else
             render_unauthorized(result[:error])
           end
+        end
+
+        def logout
+          refresh_token = params[:refresh_token]
+          token_record = RefreshToken.find_by(token: refresh_token)
+
+          token_record&.revoke!
+
+          head :no_content
         end
 
         private
