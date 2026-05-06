@@ -11,7 +11,7 @@ module Api
 
           if result[:success]
             tokens = generate_tokens(result[:teacher])
-            render json: tokens, status: :ok
+            render json: transform_response(tokens), status: :ok
           else
             render_unauthorized(result[:error])
           end
@@ -32,7 +32,8 @@ module Api
 
           if result[:success]
             access_token = JwtService.encode({ teacher_id: result[:teacher_id] })
-            render json: { access_token: access_token, refresh_token: params[:refresh_token] }, status: :ok
+            render json: transform_response({ access_token: access_token, refresh_token: params[:refresh_token] }),
+                   status: :ok
           else
             render_unauthorized(result[:error])
           end
@@ -74,7 +75,7 @@ module Api
             expires_at: Time.at(decoded[:exp])
           )
 
-          { access_token:, refresh_token: jwt_token }
+          { access_token:, refresh_token: jwt_token, user: teacher_response(teacher) }
         end
       end
     end

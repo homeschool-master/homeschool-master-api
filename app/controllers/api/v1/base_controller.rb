@@ -35,7 +35,7 @@ module Api
       end
 
       def render_success(data, status: :ok, meta: nil)
-        response = { success: true, data: }
+        response = { success: true, data: transform_response(data) }
         response[:meta] = meta if meta.present?
 
         render json: response, status:
@@ -57,7 +57,7 @@ module Api
             message: message
           }
         }
-        response[:error][:details] = details if details.present?
+        response[:error][:details] = transform_response(details) if details.present?
         render json: response, status: status
       end
 
@@ -98,6 +98,23 @@ module Api
         }
       end
       # rubocop:enable Metrics/MethodLength
+
+      def transform_response(data)
+        return data unless request.headers['X-Key-Inflection'] == 'camel'
+
+        deep_camelize(data)
+      end
+
+      def deep_camelize(value)
+        case value
+        when Hash
+          value.deep_transform_keys { |key| key.to_s.camelize(:lower) }
+        when Array
+          value.map { |item| deep_camelize(item) }
+        else
+          value
+        end
+      end
     end
   end
 end
