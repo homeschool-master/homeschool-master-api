@@ -102,8 +102,8 @@ module Api
         end
 
         def clear_auth_cookies
-          cookies.delete(:access_token)
-          cookies.delete(:refresh_token)
+          cookies.delete(:access_token, same_site: :lax, secure: Rails.env.production?)
+          cookies.delete(:refresh_token, same_site: :lax, secure: Rails.env.production?)
         end
       end
     end
