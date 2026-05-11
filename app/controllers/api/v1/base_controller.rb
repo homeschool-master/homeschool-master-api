@@ -24,7 +24,7 @@ module Api
         @current_teacher = Teacher.find_by(id: decoded[:teacher_id])
         return render_unauthorized('Teacher not found') if @current_teacher.nil?
 
-        render_unauthorized('Account is deactivated') unless @current_teacher.active?
+        render_unauthorized('Account is deactivated') unless @current_teacher.is_active?
       end
 
       def extract_token
