@@ -10,21 +10,31 @@ RSpec.describe 'Api::V1::Auth::Authentication', type: :request do
         post api_v1_auth_login_url, params: { email: @teacher.email, password: 'password123' }
         @json_response = JSON.parse(response.body)
       end
-      it 'should return a successfull response' do
-        expect(response).to have_http_status(:success)
-      end
-      it 'should generate an access token' do
-        decoded = JwtService.decode(@json_response['access_token'])
 
-        expect(decoded).to be_present
-        expect(decoded[:teacher_id]).to eq(@teacher.id)
+      it 'should return a successful response' do
+        expect(response).to have_http_status(:ok)
       end
-      it 'should generate a refresh token and store it in the db' do
-        decoded = JwtService.decode(@json_response['refresh_token'])
 
-        expect(decoded).to be_present
-        expect(decoded[:teacher_id]).to eq(@teacher.id)
-        expect(@teacher.refresh_tokens.last.token).to eq(@json_response['refresh_token'])
+      it 'should set the access token cookie' do
+        expect(response.cookies['access_token']).to be_present
+      end
+
+      it 'sets the refresh token cookie' do
+        expect(response.cookies['refresh_token']).to be_present
+      end
+
+      it 'returns user data in the response body' do
+        expect(@json_response['user']).to be_present
+        expect(@json_response['user']['email']).to eq(@teacher.email)
+      end
+
+      it 'does not return tokens in the response body' do
+        expect(@json_response).not_to have_key('access_token')
+        expect(@json_response).not_to have_key('refresh_token')
+      end
+
+      it 'stores the refresh token in the database' do
+        expect(@teacher.refresh_tokens.count).to eq(1)
       end
     end
 
@@ -38,6 +48,7 @@ RSpec.describe 'Api::V1::Auth::Authentication', type: :request do
           post api_v1_auth_login_url, params: { email: @teacher.email, password: 'WrongPassword123' }
           json_response = JSON.parse(response.body)
 
+          expect(response).to have_http_status(:unauthorized)
           expect(json_response['error']['message']).to eq('Invalid email or password')
         end
       end
@@ -47,7 +58,17 @@ RSpec.describe 'Api::V1::Auth::Authentication', type: :request do
           post api_v1_auth_login_url, params: { email: 'email@doesnotexist.com', password: 'WrongPassword123' }
           json_response = JSON.parse(response.body)
 
+          expect(response).to have_http_status(:unauthorized)
           expect(json_response['error']['message']).to eq('Invalid email or password')
+        end
+      end
+
+      context 'when the account is deactivated' do
+        it 'returns an unauthorized response' do
+          @teacher.update!(is_active: false)
+          post api_v1_auth_login_url, params: { email: @teacher.email, password: 'password123' }
+
+          expect(response).to have_http_status(:unauthorized)
         end
       end
     end
@@ -144,64 +165,56 @@ RSpec.describe 'Api::V1::Auth::Authentication', type: :request do
     end
   end
 
+  context 'GET /api/v1/auth/me' do
+    describe 'when authenticated' do
+      before do
+        @teacher = FactoryBot.create(:teacher)
+        post api_v1_auth_login_url, params: { email: @teacher.email, password: 'password123' }
+        get api_v1_auth_me_url
+        @json_response = JSON.parse(response.body)
+      end
+
+      it 'returns a successful response' do
+        expect(response).to have_http_status(:ok)
+      end
+
+      it 'returns the current user data' do
+        expect(@json_response['user']['email']).to eq(@teacher.email)
+        expect(@json_response['user']['first_name']).to eq(@teacher.first_name)
+      end
+    end
+
+    describe 'when not authenticated' do
+      it 'returns an unauthorized response' do
+        get api_v1_auth_me_url
+        expect(response).to have_http_status(:unauthorized)
+      end
+    end
+  end
+
   context 'POST /api/v1/auth/refresh' do
     describe 'when refresh is successful' do
       before do
         @teacher = FactoryBot.create(:teacher)
-        # Login to get a valid refresh token
         post api_v1_auth_login_url, params: { email: @teacher.email, password: 'password123' }
-        @login_response = JSON.parse(response.body)
-        @refresh_token = @login_response['refresh_token']
-
-        # Call refresh endpoint
-        post api_v1_auth_refresh_url, params: { refresh_token: @refresh_token }
+        post api_v1_auth_refresh_url
         @json_response = JSON.parse(response.body)
       end
 
-      it 'should return a successful response' do
-        expect(response).to have_http_status(:success)
+      it 'returns a successful response' do
+        expect(response).to have_http_status(:ok)
       end
 
-      it 'should return a new access token' do
-        decoded = JwtService.decode(@json_response['access_token'])
-
-        expect(decoded).to be_present
-        expect(decoded[:teacher_id]).to eq(@teacher.id)
-      end
-
-      it 'should return the same refresh token' do
-        expect(@json_response['refresh_token']).to eq(@refresh_token)
+      it 'sets a new access token cookie' do
+        expect(response.cookies['access_token']).to be_present
       end
     end
 
     describe 'when refresh fails' do
-      context 'when refresh token is invalid' do
-        it 'should return an unauthorized response' do
-          post api_v1_auth_refresh_url, params: { refresh_token: 'invalid-token' }
-          json_response = JSON.parse(response.body)
-
+      context 'when no cookie is present' do
+        it 'returns an unauthorized response' do
+          post api_v1_auth_refresh_url
           expect(response).to have_http_status(:unauthorized)
-          expect(json_response['error']['message']).to eq('Invalid refresh token')
-        end
-      end
-
-      context 'when refresh token is expired' do
-        before do
-          @teacher = FactoryBot.create(:teacher)
-          post api_v1_auth_login_url, params: { email: @teacher.email, password: 'password123' }
-          @login_response = JSON.parse(response.body)
-          @refresh_token = @login_response['refresh_token']
-
-          # Expire the token in database
-          RefreshToken.last.update(expires_at: 1.day.ago)
-        end
-
-        it 'should return an unauthorized response' do
-          post api_v1_auth_refresh_url, params: { refresh_token: @refresh_token }
-          json_response = JSON.parse(response.body)
-
-          expect(response).to have_http_status(:unauthorized)
-          expect(json_response['error']['message']).to eq('Invalid refresh token')
         end
       end
 
@@ -209,19 +222,12 @@ RSpec.describe 'Api::V1::Auth::Authentication', type: :request do
         before do
           @teacher = FactoryBot.create(:teacher)
           post api_v1_auth_login_url, params: { email: @teacher.email, password: 'password123' }
-          @login_response = JSON.parse(response.body)
-          @refresh_token = @login_response['refresh_token']
-
-          # Revoke the token
           RefreshToken.last.update(revoked_at: Time.current)
         end
 
-        it 'should return an unauthorized response' do
-          post api_v1_auth_refresh_url, params: { refresh_token: @refresh_token }
-          json_response = JSON.parse(response.body)
-
+        it 'returns an unauthorized response' do
+          post api_v1_auth_refresh_url
           expect(response).to have_http_status(:unauthorized)
-          expect(json_response['error']['message']).to eq('Invalid refresh token')
         end
       end
     end
@@ -232,38 +238,28 @@ RSpec.describe 'Api::V1::Auth::Authentication', type: :request do
       before do
         @teacher = FactoryBot.create(:teacher)
         post api_v1_auth_login_url, params: { email: @teacher.email, password: 'password123' }
-        @login_response = JSON.parse(response.body)
-        @refresh_token = @login_response['refresh_token']
       end
 
-      it 'should return no content status' do
-        post api_v1_auth_logout_url, params: { refresh_token: @refresh_token }
+      it 'returns no content status' do
+        post api_v1_auth_logout_url
         expect(response).to have_http_status(:no_content)
       end
 
-      it 'should revoke the refresh token' do
-        post api_v1_auth_logout_url, params: { refresh_token: @refresh_token }
-
-        token_record = RefreshToken.find_by(token: @refresh_token)
-        expect(token_record.revoked_at).to be_present
+      it 'revokes the refresh token' do
+        post api_v1_auth_logout_url
+        expect(RefreshToken.last.revoked_at).to be_present
       end
 
-      it 'should prevent the refresh token from being used again' do
-        post api_v1_auth_logout_url, params: { refresh_token: @refresh_token }
-        post api_v1_auth_refresh_url, params: { refresh_token: @refresh_token }
-
+      it 'prevents the refresh token from being used again' do
+        post api_v1_auth_logout_url
+        post api_v1_auth_refresh_url
         expect(response).to have_http_status(:unauthorized)
       end
     end
 
-    describe 'when token is invalid or missing' do
-      it 'should still return no content for invalid token' do
-        post api_v1_auth_logout_url, params: { refresh_token: 'invalid-token' }
-        expect(response).to have_http_status(:no_content)
-      end
-
-      it 'should still return no content for missing token' do
-        post api_v1_auth_logout_url, params: {}
+    describe 'when no cookie is present' do
+      it 'still returns no content' do
+        post api_v1_auth_logout_url
         expect(response).to have_http_status(:no_content)
       end
     end

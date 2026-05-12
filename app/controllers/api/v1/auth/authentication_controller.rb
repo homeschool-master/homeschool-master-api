@@ -22,27 +22,23 @@ module Api
         end
 
         def refresh
-          result = AuthenticationService.refresh(params[:refresh_token])
+          refresh_token = cookies[:refresh_token]
+          result = AuthenticationService.refresh(refresh_token)
 
           if result[:success]
             access_token = JwtService.encode({ teacher_id: result[:teacher_id] })
             set_cookie(:access_token, access_token)
             render json: { success: true }, status: :ok
-            render json: transform_response({ access_token: access_token, refresh_token: params[:refresh_token] }),
-                   status: :ok
           else
             render_unauthorized(result[:error])
           end
         end
 
         def logout
-          refresh_token = params[:refresh_token]
+          refresh_token = cookies[:refresh_token]
           token_record = RefreshToken.find_by(token: refresh_token)
-
           token_record&.revoke!
-
           clear_auth_cookies
-
           head :no_content
         end
 
