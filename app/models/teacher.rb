@@ -56,7 +56,7 @@ class Teacher < ApplicationRecord
   def password_reset_token_valid?
     return false if password_reset_token.blank? || password_reset_sent_at.blank?
 
-    password_reset_sent_at > 2.hours.ago
+    password_reset_sent_at > 1.hours.ago
   end
 
   def clear_password_reset_token!
