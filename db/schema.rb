@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_05_11_202647) do
+ActiveRecord::Schema[7.1].define(version: 2026_05_29_040844) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -45,7 +45,11 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_11_202647) do
     t.boolean "is_active", default: true
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "pending_email"
+    t.string "email_change_token"
+    t.datetime "email_change_sent_at"
     t.index ["email"], name: "index_teachers_on_email", unique: true
+    t.index ["email_change_token"], name: "index_teachers_on_email_change_token", unique: true
     t.index ["email_verification_token"], name: "index_teachers_on_email_verification_token", unique: true
     t.index ["is_active"], name: "index_teachers_on_is_active"
     t.index ["password_reset_token"], name: "index_teachers_on_password_reset_token", unique: true
