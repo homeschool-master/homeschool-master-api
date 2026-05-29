@@ -17,6 +17,7 @@ Rails.application.routes.draw do
       end
 
       # Protected routes
+      patch 'profile', to: 'profile#update'
     end
   end
 

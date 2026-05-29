@@ -14,6 +14,16 @@ module Api
 
       private
 
+      def teacher_response(teacher)
+        {
+          id: teacher.id,
+          first_name: teacher.first_name,
+          last_name: teacher.last_name,
+          email: teacher.email,
+          created_at: teacher.created_at
+        }
+      end
+
       def authenticate_request
         token = extract_token
         return render_unauthorized('Missing authentication token') if token.nil?

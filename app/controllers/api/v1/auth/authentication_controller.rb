@@ -58,16 +58,6 @@ module Api
           params.permit(:first_name, :last_name, :email, :password)
         end
 
-        def teacher_response(teacher)
-          {
-            id: teacher.id,
-            first_name: teacher.first_name,
-            last_name: teacher.last_name,
-            email: teacher.email,
-            created_at: teacher.created_at
-          }
-        end
-
         def generate_tokens(teacher)
           access_token = JwtService.encode({ teacher_id: teacher.id })
 
