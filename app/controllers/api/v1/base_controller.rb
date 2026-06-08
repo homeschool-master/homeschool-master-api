@@ -15,13 +15,7 @@ module Api
       private
 
       def teacher_response(teacher)
-        {
-          id: teacher.id,
-          first_name: teacher.first_name,
-          last_name: teacher.last_name,
-          email: teacher.email,
-          created_at: teacher.created_at
-        }
+        TeacherSerializer.render(teacher)
       end
 
       def authenticate_request
