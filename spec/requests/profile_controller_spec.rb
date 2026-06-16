@@ -28,8 +28,8 @@ RSpec.describe 'Api::V1::Profile', type: :request do
         patch api_v1_profile_url,
               params: { first_name: 'New', last_name: 'Name', current_password: 'password123' }
         json_response = JSON.parse(response.body)
-        expect(json_response['user']['first_name']).to eq('New')
-        expect(json_response['user']['last_name']).to eq('Name')
+        expect(json_response['data']['first_name']).to eq('New')
+        expect(json_response['data']['last_name']).to eq('Name')
       end
     end
 

@@ -24,8 +24,8 @@ RSpec.describe 'Api::V1::Auth::Authentication', type: :request do
       end
 
       it 'returns user data in the response body' do
-        expect(@json_response['user']).to be_present
-        expect(@json_response['user']['email']).to eq(@teacher.email)
+        expect(@json_response['data']).to be_present
+        expect(@json_response['data']['email']).to eq(@teacher.email)
       end
 
       it 'does not return tokens in the response body' do
@@ -179,8 +179,8 @@ RSpec.describe 'Api::V1::Auth::Authentication', type: :request do
       end
 
       it 'returns the current user data' do
-        expect(@json_response['user']['email']).to eq(@teacher.email)
-        expect(@json_response['user']['first_name']).to eq(@teacher.first_name)
+        expect(@json_response['data']['email']).to eq(@teacher.email)
+        expect(@json_response['data']['first_name']).to eq(@teacher.first_name)
       end
     end
 

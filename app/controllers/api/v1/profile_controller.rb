@@ -12,7 +12,7 @@ module Api
         current_teacher.assign_attributes(profile_params)
 
         if current_teacher.save
-          render json: transform_response({ user: teacher_response(current_teacher) }), status: :ok
+          render_success(teacher_response(current_teacher))
         else
           render_validation_errors(current_teacher)
         end

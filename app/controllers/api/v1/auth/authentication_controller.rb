@@ -43,7 +43,7 @@ module Api
         end
 
         def me
-          render json: transform_response({ user: teacher_response(current_teacher) }), status: :ok
+          render_success(teacher_response(current_teacher))
         end
 
         private
@@ -51,7 +51,7 @@ module Api
         def handle_successful_login(teacher)
           tokens = generate_tokens(teacher)
           set_auth_cookies(tokens[:access_token], tokens[:refresh_token])
-          render json: transform_response({ user: teacher_response(teacher) }), status: :ok
+          render_success(teacher_response(teacher))
         end
 
         def register_params
