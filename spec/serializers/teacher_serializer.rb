@@ -14,6 +14,9 @@ RSpec.describe TeacherSerializer do
         first_name: teacher.first_name,
         last_name: teacher.last_name,
         email: teacher.email,
+        notify_account_updates: teacher.notify_account_updates,
+        notify_product_updates: teacher.notify_product_updates,
+        notify_homeschool_resources: teacher.notify_homeschool_resources,
         created_at: teacher.created_at
       )
     end

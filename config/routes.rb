@@ -20,6 +20,7 @@ Rails.application.routes.draw do
 
       # Application routes (authenticated)
       patch 'profile', to: 'profile#update'
+      patch 'notifications', to: 'notifications#update'
     end
   end
 
