@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_19_212524) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_30_220017) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -51,6 +51,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_19_212524) do
     t.boolean "notify_account_updates", default: true, null: false
     t.boolean "notify_product_updates", default: true, null: false
     t.boolean "notify_homeschool_resources", default: true, null: false
+    t.boolean "onboarding_completed", default: false, null: false
     t.index ["email"], name: "index_teachers_on_email", unique: true
     t.index ["email_change_token"], name: "index_teachers_on_email_change_token", unique: true
     t.index ["email_verification_token"], name: "index_teachers_on_email_verification_token", unique: true

@@ -9,7 +9,7 @@ class TeacherSerializer
     @teacher = teacher
   end
 
-  def to_h
+  def to_h # rubocop:disable Metrics/MethodLength
     {
       id: @teacher.id,
       first_name: @teacher.first_name,
@@ -18,6 +18,7 @@ class TeacherSerializer
       notify_account_updates: @teacher.notify_account_updates,
       notify_product_updates: @teacher.notify_product_updates,
       notify_homeschool_resources: @teacher.notify_homeschool_resources,
+      onboarding_completed: @teacher.onboarding_completed,
       created_at: @teacher.created_at
     }
   end
