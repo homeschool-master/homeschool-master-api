@@ -17,6 +17,7 @@ RSpec.describe TeacherSerializer do
         notify_account_updates: teacher.notify_account_updates,
         notify_product_updates: teacher.notify_product_updates,
         notify_homeschool_resources: teacher.notify_homeschool_resources,
+        onboarding_completed: teacher.onboarding_completed,
         created_at: teacher.created_at
       )
     end
