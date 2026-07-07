@@ -18,5 +18,6 @@ RSpec.describe Teacher, type: :model do
 
   describe 'associations' do
     it { is_expected.to have_many(:refresh_tokens).dependent(:destroy) }
+    it { is_expected.to have_many(:students).dependent(:destroy) }
   end
 end

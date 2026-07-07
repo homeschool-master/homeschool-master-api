@@ -5,6 +5,7 @@ class Teacher < ApplicationRecord
 
   # Associations
   has_many :refresh_tokens, dependent: :destroy
+  has_many :students, dependent: :destroy
 
   # Validations
   validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }
