@@ -9,7 +9,7 @@ class StudentSerializer
     @student = student
   end
 
-  def to_h
+  def to_h # rubocop:disable Metrics/MethodLength
     {
       id: @student.id,
       teacher_id: @student.teacher_id,
