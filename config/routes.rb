@@ -22,7 +22,7 @@ Rails.application.routes.draw do
       patch 'profile', to: 'profile#update'
       patch 'notifications', to: 'notifications#update'
       patch 'onboarding', to: 'onboarding#update'
-      resources :students, only: %i[create]
+      resources :students, only: %i[index show create update destroy]
     end
   end
 
