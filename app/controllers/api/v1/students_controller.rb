@@ -51,7 +51,7 @@ module Api
       end
 
       def student_params
-        params.permit(:first_name, :last_name, :grade_level, :color, :profile_image_url)
+        params.permit(:first_name, :middle_name, :last_name, :grade_level, :color, :profile_image_url)
       end
     end
   end

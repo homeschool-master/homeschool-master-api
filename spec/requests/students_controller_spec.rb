@@ -91,7 +91,7 @@ RSpec.describe 'Api::V1::Students', type: :request do
 
   describe 'POST /api/v1/students' do
     let(:valid_params) do
-      { first_name: 'Emma', last_name: 'Masters', grade_level: '5', color: '#7a322d' }
+      { first_name: 'Emma', middle_name: 'Rose', last_name: 'Masters', grade_level: '5', color: '#7a322d' }
     end
 
     context 'when authenticated' do
@@ -128,6 +128,13 @@ RSpec.describe 'Api::V1::Students', type: :request do
       it 'returns a validation error when first name is blank' do
         post api_v1_students_url, params: valid_params.merge(first_name: '')
         expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it 'saves the middle name when provided' do
+        # puts valid_params
+        post api_v1_students_url, params: valid_params
+        puts JSON.parse(response.body)
+        expect(JSON.parse(response.body)['data']['middle_name']).to eq('Rose')
       end
 
       it 'allows a minimal body without grade or color' do

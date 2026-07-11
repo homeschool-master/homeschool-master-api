@@ -55,7 +55,7 @@ module Api
         end
 
         def register_params
-          params.permit(:first_name, :last_name, :email, :password)
+          params.permit(:first_name, :middle_name, :last_name, :email, :password)
         end
 
         def generate_tokens(teacher)

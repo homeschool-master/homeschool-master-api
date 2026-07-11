@@ -8,5 +8,9 @@ FactoryBot.define do
     grade_level { '5' }
     color { '#7a322d' }
     is_active { true }
+
+    trait :with_middle_name do
+      middle_name { 'Rose' }
+    end
   end
 end

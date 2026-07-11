@@ -21,7 +21,7 @@ module Api
       private
 
       def profile_params
-        params.permit(:first_name, :last_name)
+        params.permit(:first_name, :middle_name, :last_name)
       end
     end
   end
