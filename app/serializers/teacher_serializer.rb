@@ -13,6 +13,7 @@ class TeacherSerializer
     {
       id: @teacher.id,
       first_name: @teacher.first_name,
+      middle_name: @teacher.middle_name,
       last_name: @teacher.last_name,
       email: @teacher.email,
       notify_account_updates: @teacher.notify_account_updates,

@@ -9,6 +9,7 @@ class Teacher < ApplicationRecord
 
   # Validations
   validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }
+  validates :middle_name, length: { maximum: 100 }, allow_blank: true
   validates :last_name, presence: true, length: { maximum: 100 }
   validates :nickname, length: { maximum: 100 }, allow_blank: true
   validates :email, presence: true,

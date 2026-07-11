@@ -6,6 +6,7 @@ class Student < ApplicationRecord
 
   # Validations
   validates :first_name, presence: true, length: { maximum: 100 }
+  validates :middle_name, length: { maximum: 100 }, allow_blank: true
   validates :last_name, presence: true, length: { maximum: 100 }
   validates :grade_level, length: { maximum: 50 }, allow_blank: true
   validates :color, length: { maximum: 20 }, allow_blank: true
