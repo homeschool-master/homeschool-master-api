@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 class Student < ApplicationRecord
+  # Callbacks
+  before_save :nullify_blank_middle_name
+
   # Associations
   belongs_to :teacher
 
@@ -17,5 +20,11 @@ class Student < ApplicationRecord
   # Instance methods
   def full_name
     "#{first_name} #{last_name}"
+  end
+
+  private
+
+  def nullify_blank_middle_name
+    self.middle_name = nil if middle_name.blank?
   end
 end

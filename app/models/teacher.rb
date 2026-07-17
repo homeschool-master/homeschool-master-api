@@ -23,6 +23,7 @@ class Teacher < ApplicationRecord
   # Callbacks
   before_save :downcase_email
   before_create :generate_email_verification_token
+  before_save :nullify_blank_middle_name
 
   # Scopes
   scope :active, -> { where(is_active: true) }
@@ -122,5 +123,9 @@ class Teacher < ApplicationRecord
 
   def password_required?
     new_record? || password.present?
+  end
+
+  def nullify_blank_middle_name
+    self.middle_name = nil if middle_name.blank?
   end
 end
