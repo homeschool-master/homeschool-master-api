@@ -82,14 +82,21 @@ module Api
             value: value,
             httponly: true,
             secure: Rails.env.production?,
-            same_site: :lax,
+            same_site: cookie_same_site,
             expires: 7.days.from_now
           }
         end
 
         def clear_auth_cookies
-          cookies.delete(:access_token, same_site: :lax, secure: Rails.env.production?)
-          cookies.delete(:refresh_token, same_site: :lax, secure: Rails.env.production?)
+          cookies.delete(:access_token, same_site: cookie_same_site, secure: Rails.env.production?)
+          cookies.delete(:refresh_token, same_site: cookie_same_site, secure: Rails.env.production?)
+        end
+
+        # Vercel and Heroku are separate registrable domains, so production API
+        # calls are cross-site and Lax cookies would never attach. None requires
+        # Secure, which holds since both hosts are HTTPS.
+        def cookie_same_site
+          Rails.env.production? ? :none : :lax
         end
       end
     end
