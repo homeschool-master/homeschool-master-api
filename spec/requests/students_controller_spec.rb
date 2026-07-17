@@ -131,10 +131,13 @@ RSpec.describe 'Api::V1::Students', type: :request do
       end
 
       it 'saves the middle name when provided' do
-        # puts valid_params
         post api_v1_students_url, params: valid_params
-        puts JSON.parse(response.body)
         expect(JSON.parse(response.body)['data']['middle_name']).to eq('Rose')
+      end
+
+      it 'nullifies a blank middle name' do
+        post api_v1_students_url, params: valid_params.merge(middle_name: '   ')
+        expect(JSON.parse(response.body)['data']['middle_name']).to be_nil
       end
 
       it 'allows a minimal body without grade or color' do
@@ -168,6 +171,18 @@ RSpec.describe 'Api::V1::Students', type: :request do
         @student.reload
         expect(@student.grade_level).to eq('6')
         expect(@student.color).to eq('#796123')
+      end
+
+      it 'updates the middle name' do
+        patch api_v1_student_url(@student), params: { middle_name: 'Rose' }
+        expect(response).to have_http_status(:ok)
+        expect(@student.reload.middle_name).to eq('Rose')
+      end
+
+      it 'clears the middle name when sent blank' do
+        @student.update!(middle_name: 'Rose')
+        patch api_v1_student_url(@student), params: { middle_name: '' }
+        expect(@student.reload.middle_name).to be_nil
       end
 
       it 'returns the updated payload' do
