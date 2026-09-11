@@ -20,9 +20,11 @@ Rails.application.routes.draw do
 
       # Application routes (authenticated)
       patch 'profile', to: 'profile#update'
+      patch 'profile/preferences', to: 'preferences#update'
       patch 'notifications', to: 'notifications#update'
       patch 'onboarding', to: 'onboarding#update'
       resources :students, only: %i[index show create update destroy]
+      resources :calendar_events, only: %i[index show create update destroy]
     end
   end
 

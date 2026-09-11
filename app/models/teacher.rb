@@ -3,9 +3,14 @@
 class Teacher < ApplicationRecord
   has_secure_password
 
+  # Used when a teacher has no zone of their own. The column stays nullable and
+  # existing rows are not backfilled: this fallback covers them.
+  DEFAULT_TIME_ZONE = 'America/New_York'
+
   # Associations
   has_many :refresh_tokens, dependent: :destroy
   has_many :students, dependent: :destroy
+  has_many :calendar_events, dependent: :destroy
 
   # Validations
   validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }
@@ -19,6 +24,7 @@ class Teacher < ApplicationRecord
                        length: { minimum: 8 },
                        if: :password_required?
   validates :phone, length: { maximum: 20 }, allow_blank: true
+  validates :time_zone, iana_time_zone: true
 
   # Callbacks
   before_save :downcase_email
@@ -30,6 +36,13 @@ class Teacher < ApplicationRecord
   scope :verified, -> { where.not(email_verified_at: nil) }
 
   # Instance methods
+
+  # The zone to use when rendering times for this teacher with no client to ask,
+  # such as reminder emails and exports. Never nil, so callers do not branch.
+  def effective_time_zone
+    time_zone.presence || DEFAULT_TIME_ZONE
+  end
+
   def full_name
     "#{first_name} #{last_name}"
   end

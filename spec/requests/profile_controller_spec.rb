@@ -33,6 +33,44 @@ RSpec.describe 'Api::V1::Profile', type: :request do
       end
     end
 
+    describe 'when a time zone is sent to the profile endpoint' do
+      before do
+        @teacher = FactoryBot.create(:teacher)
+        post api_v1_auth_login_url, params: { email: @teacher.email, password: 'password123' }
+      end
+
+      it 'does not set the time zone' do
+        patch api_v1_profile_url, params: { time_zone: 'Europe/Lisbon', current_password: 'password123' }
+        expect(@teacher.reload.time_zone).to be_nil
+      end
+
+      it 'does not overwrite an existing time zone' do
+        @teacher.update!(time_zone: 'Asia/Tokyo')
+        patch api_v1_profile_url, params: { time_zone: 'Europe/Lisbon', current_password: 'password123' }
+        expect(@teacher.reload.time_zone).to eq('Asia/Tokyo')
+      end
+
+      it 'still applies the identity fields sent alongside it' do
+        patch api_v1_profile_url,
+              params: { first_name: 'New', time_zone: 'Europe/Lisbon', current_password: 'password123' }
+        expect(response).to have_http_status(:ok)
+        expect(@teacher.reload.first_name).to eq('New')
+      end
+
+      it 'does not reject an unrecognized zone, it ignores the field entirely' do
+        patch api_v1_profile_url, params: { time_zone: 'Mars/Olympus_Mons', current_password: 'password123' }
+        expect(response).to have_http_status(:ok)
+        expect(@teacher.reload.time_zone).to be_nil
+      end
+
+      it 'serializes a null raw zone and the fallback effective zone' do
+        patch api_v1_profile_url, params: { first_name: 'New', current_password: 'password123' }
+        data = JSON.parse(response.body)['data']
+        expect(data['time_zone']).to be_nil
+        expect(data['effective_time_zone']).to eq('America/New_York')
+      end
+    end
+
     describe 'when the current password is wrong' do
       before do
         @teacher = FactoryBot.create(:teacher)

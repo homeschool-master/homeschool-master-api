@@ -112,6 +112,63 @@ RSpec.describe 'Api::V1::Auth::Authentication', type: :request do
         expect(json_response['data']).not_to have_key('password')
         expect(json_response['data']).not_to have_key('password_digest')
       end
+
+      it 'should store a submitted time zone' do
+        post api_v1_auth_register_url, params: valid_params.merge(time_zone: 'Europe/Lisbon')
+        expect(Teacher.find_by(email: 'robert@example.com').time_zone).to eq('Europe/Lisbon')
+      end
+
+      it 'should return the submitted time zone' do
+        post api_v1_auth_register_url, params: valid_params.merge(time_zone: 'Europe/Lisbon')
+        data = JSON.parse(response.body)['data']
+        expect(data['time_zone']).to eq('Europe/Lisbon')
+        expect(data['effective_time_zone']).to eq('Europe/Lisbon')
+      end
+
+      it 'should leave the column null when no zone is submitted' do
+        post api_v1_auth_register_url, params: valid_params
+        expect(Teacher.find_by(email: 'robert@example.com').time_zone).to be_nil
+      end
+
+      it 'should serialize a null raw zone and the fallback effective zone' do
+        post api_v1_auth_register_url, params: valid_params
+        data = JSON.parse(response.body)['data']
+        expect(data['time_zone']).to be_nil
+        expect(data['effective_time_zone']).to eq('America/New_York')
+      end
+
+      it 'should not infer a zone from request headers' do
+        post api_v1_auth_register_url, params: valid_params, headers: { 'X-Timezone' => 'Asia/Tokyo' }
+        expect(Teacher.find_by(email: 'robert@example.com').time_zone).to be_nil
+      end
+    end
+
+    describe 'when the submitted time zone is invalid' do
+      let(:valid_params) do
+        {
+          first_name: 'Robert',
+          last_name: 'Masters',
+          email: 'robert@example.com',
+          password: 'password123'
+        }
+      end
+
+      it 'should return unprocessable content' do
+        post api_v1_auth_register_url, params: valid_params.merge(time_zone: 'Mars/Olympus_Mons')
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it 'should not create the teacher' do
+        expect do
+          post api_v1_auth_register_url, params: valid_params.merge(time_zone: 'Mars/Olympus_Mons')
+        end.not_to change(Teacher, :count)
+      end
+
+      it 'should report the zone error' do
+        post api_v1_auth_register_url, params: valid_params.merge(time_zone: 'Mars/Olympus_Mons')
+        details = JSON.parse(response.body)['error']['details']
+        expect(details['time_zone']).to include('is not a recognized IANA time zone')
+      end
     end
 
     describe 'when registration fails' do

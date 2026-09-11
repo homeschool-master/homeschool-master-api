@@ -16,6 +16,8 @@ class TeacherSerializer
       middle_name: @teacher.middle_name,
       last_name: @teacher.last_name,
       email: @teacher.email,
+      time_zone: @teacher.time_zone,
+      effective_time_zone: @teacher.effective_time_zone,
       notify_account_updates: @teacher.notify_account_updates,
       notify_product_updates: @teacher.notify_product_updates,
       notify_homeschool_resources: @teacher.notify_homeschool_resources,

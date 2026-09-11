@@ -7,6 +7,9 @@ class Student < ApplicationRecord
   # Associations
   belongs_to :teacher
 
+  has_many :event_attendees, dependent: :destroy
+  has_many :calendar_events, through: :event_attendees
+
   # Validations
   validates :first_name, presence: true, length: { maximum: 100 }
   validates :middle_name, length: { maximum: 100 }, allow_blank: true

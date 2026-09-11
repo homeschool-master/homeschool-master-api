@@ -20,6 +20,8 @@ module Api
 
       private
 
+      # Identity fields only. Display preferences live on
+      # PreferencesController, which has no password gate.
       def profile_params
         params.permit(:first_name, :middle_name, :last_name)
       end
