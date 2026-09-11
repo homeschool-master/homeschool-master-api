@@ -99,6 +99,187 @@ RSpec.describe 'Api::V1::CalendarEvents', type: :request do
       end
     end
 
+    context 'when a bare date names a local day' do
+      # 2026-09-17T04:00:00Z through 2026-09-18T03:59:59Z is exactly the
+      # teacher's local September 17 in Eastern, which is UTC-4 on that date.
+      def create_full_local_day(teacher)
+        FactoryBot.create(:calendar_event, teacher: teacher, title: 'LocalDay',
+                                           start_time: Time.utc(2026, 9, 17, 4, 0, 0),
+                                           end_time: Time.utc(2026, 9, 18, 3, 59, 59))
+      end
+
+      def titles
+        JSON.parse(response.body)['data'].map { |e| e['title'] }
+      end
+
+      context 'with an Eastern teacher' do
+        before do
+          @teacher = FactoryBot.create(:teacher, time_zone: 'America/New_York')
+          sign_in(@teacher)
+          create_full_local_day(@teacher)
+        end
+
+        it 'returns the event on its own local day' do
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-17', end_date: '2026-09-17' }
+          expect(titles).to eq(['LocalDay'])
+        end
+
+        it 'does not leak the event into the next local day' do
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-18', end_date: '2026-09-18' }
+          expect(titles).to be_empty
+        end
+
+        it 'does not leak the event into the previous local day' do
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-16', end_date: '2026-09-16' }
+          expect(titles).to be_empty
+        end
+
+        it 'keeps an evening event on its local day rather than the next UTC day' do
+          FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Evening',
+                                             start_time: Time.utc(2026, 9, 18, 1, 0, 0),
+                                             end_time: Time.utc(2026, 9, 18, 2, 0, 0))
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-17', end_date: '2026-09-17' }
+          expect(titles).to include('Evening')
+        end
+
+        it 'does not return that evening event on the following local day' do
+          FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Evening',
+                                             start_time: Time.utc(2026, 9, 18, 1, 0, 0),
+                                             end_time: Time.utc(2026, 9, 18, 2, 0, 0))
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-18', end_date: '2026-09-18' }
+          expect(titles).not_to include('Evening')
+        end
+      end
+
+      context 'with a teacher who has no stored zone' do
+        before do
+          @teacher = FactoryBot.create(:teacher, time_zone: nil)
+          sign_in(@teacher)
+          create_full_local_day(@teacher)
+        end
+
+        it 'falls back to Eastern and returns the event on the 17th' do
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-17', end_date: '2026-09-17' }
+          expect(titles).to eq(['LocalDay'])
+        end
+
+        it 'falls back to Eastern and excludes it on the 18th' do
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-18', end_date: '2026-09-18' }
+          expect(titles).to be_empty
+        end
+      end
+
+      # 2026-09-17T20:00:00Z is the afternoon of the 17th in Eastern and the
+      # early morning of the 18th in Tokyo, so the same bare date resolves to a
+      # window that includes it for one teacher and not the other.
+      context 'when two teachers in different zones send the same bare date' do
+        def create_afternoon_event(teacher)
+          FactoryBot.create(:calendar_event, teacher: teacher, title: 'Afternoon',
+                                             start_time: Time.utc(2026, 9, 17, 20, 0, 0),
+                                             end_time: Time.utc(2026, 9, 17, 21, 0, 0))
+        end
+
+        it 'returns it on the 17th for the Eastern teacher' do
+          teacher = FactoryBot.create(:teacher, time_zone: 'America/New_York')
+          create_afternoon_event(teacher)
+          sign_in(teacher)
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-17', end_date: '2026-09-17' }
+          expect(titles).to eq(['Afternoon'])
+        end
+
+        it 'does not return it on the 17th for the Tokyo teacher' do
+          teacher = FactoryBot.create(:teacher, email: 'tokyo@example.com', time_zone: 'Asia/Tokyo')
+          create_afternoon_event(teacher)
+          sign_in(teacher)
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-17', end_date: '2026-09-17' }
+          expect(titles).to be_empty
+        end
+
+        it 'returns it on the 18th for the Tokyo teacher' do
+          teacher = FactoryBot.create(:teacher, email: 'tokyo@example.com', time_zone: 'Asia/Tokyo')
+          create_afternoon_event(teacher)
+          sign_in(teacher)
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-18', end_date: '2026-09-18' }
+          expect(titles).to eq(['Afternoon'])
+        end
+
+        it 'does not return it on the 18th for the Eastern teacher' do
+          teacher = FactoryBot.create(:teacher, time_zone: 'America/New_York')
+          create_afternoon_event(teacher)
+          sign_in(teacher)
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-18', end_date: '2026-09-18' }
+          expect(titles).to be_empty
+        end
+      end
+
+      context 'with a value that already carries a time' do
+        before do
+          @teacher = FactoryBot.create(:teacher, time_zone: 'America/New_York')
+          sign_in(@teacher)
+          create_full_local_day(@teacher)
+        end
+
+        it 'honors an explicit offset as sent' do
+          get api_v1_calendar_events_url, params: {
+            start_date: '2026-09-17T00:00:00-04:00', end_date: '2026-09-17T23:59:59-04:00'
+          }
+          expect(titles).to eq(['LocalDay'])
+        end
+
+        it 'does not widen a value that carries a time' do
+          # 00:00 through 01:00 UTC on the 17th ends before the event starts at
+          # 04:00Z, so an unwidened window returns nothing.
+          get api_v1_calendar_events_url, params: {
+            start_date: '2026-09-17T00:00:00Z', end_date: '2026-09-17T01:00:00Z'
+          }
+          expect(titles).to be_empty
+        end
+
+        it 'does not reinterpret an explicit offset in the teacher zone' do
+          # A UTC+09:00 window for the 17th ends at 2026-09-17T14:59:59Z. An
+          # afternoon event at 20:00Z falls outside it, but inside the Eastern
+          # local 17th, so a non empty result would mean the offset was ignored.
+          FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Afternoon',
+                                             start_time: Time.utc(2026, 9, 17, 20, 0, 0),
+                                             end_time: Time.utc(2026, 9, 17, 21, 0, 0))
+          get api_v1_calendar_events_url, params: {
+            start_date: '2026-09-17T00:00:00+09:00', end_date: '2026-09-17T23:59:59+09:00'
+          }
+          expect(titles).not_to include('Afternoon')
+        end
+      end
+
+      context 'with a genuine multi day event' do
+        before do
+          @teacher = FactoryBot.create(:teacher, time_zone: 'America/New_York')
+          sign_in(@teacher)
+          FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Convention',
+                                             start_time: Time.utc(2026, 9, 17, 14, 0, 0),
+                                             end_time: Time.utc(2026, 9, 19, 21, 0, 0))
+        end
+
+        it 'appears on the first local day it spans' do
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-17', end_date: '2026-09-17' }
+          expect(titles).to eq(['Convention'])
+        end
+
+        it 'appears on the middle local day it spans' do
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-18', end_date: '2026-09-18' }
+          expect(titles).to eq(['Convention'])
+        end
+
+        it 'appears on the last local day it spans' do
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-19', end_date: '2026-09-19' }
+          expect(titles).to eq(['Convention'])
+        end
+
+        it 'does not appear on the day after it ends' do
+          get api_v1_calendar_events_url, params: { start_date: '2026-09-20', end_date: '2026-09-20' }
+          expect(titles).to be_empty
+        end
+      end
+    end
+
     context 'when not authenticated' do
       it 'returns unauthorized' do
         get api_v1_calendar_events_url, params: week

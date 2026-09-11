@@ -111,8 +111,6 @@ module Api
         event.students.reload
       end
 
-      # Bare dates widen to cover the whole day so that an end_date of
-      # "2026-09-30" includes events later that day.
       def parsed_range
         range_start = parse_boundary(params[:start_date], :beginning_of_day)
         range_end = parse_boundary(params[:end_date], :end_of_day)
@@ -121,15 +119,32 @@ module Api
         [range_start, range_end]
       end
 
+      # A bare date names one of the teacher's local days, so it widens to that
+      # day's bounds in their zone. A value that already carries a time is an
+      # instant the client chose: it is used as sent, with an explicit offset
+      # honored rather than reinterpreted. Either way the result converts back
+      # to UTC for the query.
       def parse_boundary(value, edge)
         return nil if value.blank?
 
-        parsed = Time.zone.parse(value.to_s)
-        return nil if parsed.nil?
+        raw = value.to_s
+        raw.match?(/[T ]\d/) ? parse_instant(raw) : parse_local_day(raw, edge)
+      end
 
-        value.to_s.match?(/[T ]\d/) ? parsed : parsed.public_send(edge)
+      def parse_instant(raw)
+        Time.zone.parse(raw)
       rescue ArgumentError
         nil
+      end
+
+      def parse_local_day(raw, edge)
+        teacher_zone.parse(raw)&.public_send(edge)
+      rescue ArgumentError
+        nil
+      end
+
+      def teacher_zone
+        ActiveSupport::TimeZone[current_teacher.effective_time_zone] || Time.zone
       end
     end
   end
