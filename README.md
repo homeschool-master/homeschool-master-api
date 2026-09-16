@@ -1,4 +1,4 @@
-# Live preview: [homeschool-master-web.vercel.app](https://homeschool-master-web.vercel.app)
+# Live preview: [www.myhomeschoolmaster.com](https://www.myhomeschoolmaster.com)
 
 > [!NOTE]
 > This is an in-progress build, not the final product. See Status below for what's currently functional.

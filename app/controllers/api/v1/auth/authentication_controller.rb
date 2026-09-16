@@ -92,11 +92,13 @@ module Api
           cookies.delete(:refresh_token, same_site: cookie_same_site, secure: Rails.env.production?)
         end
 
-        # Vercel and Heroku are separate registrable domains, so production API
-        # calls are cross-site and Lax cookies would never attach. None requires
-        # Secure, which holds since both hosts are HTTPS.
+        # The web app and this API are both under myhomeschoolmaster.com, so the
+        # auth cookie is first party and Lax attaches on every request the app
+        # makes. It stays Lax in every environment: None would mean a third
+        # party cookie, which WebKit blocks outright, and that locked Safari and
+        # iOS users out when the two halves sat on separate registrable domains.
         def cookie_same_site
-          Rails.env.production? ? :none : :lax
+          :lax
         end
       end
     end
