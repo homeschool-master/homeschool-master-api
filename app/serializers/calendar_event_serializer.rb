@@ -20,14 +20,8 @@ class CalendarEventSerializer
       end_time: @calendar_event.end_time,
       all_day: @calendar_event.all_day,
       created_time_zone: @calendar_event.created_time_zone,
-      attendees: attendees,
+      attendee_ids: @calendar_event.student_ids,
       created_at: @calendar_event.created_at
     }
-  end
-
-  private
-
-  def attendees
-    @calendar_event.students.map { |student| StudentSerializer.render(student) }
   end
 end

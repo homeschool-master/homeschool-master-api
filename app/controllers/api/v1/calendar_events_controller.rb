@@ -10,10 +10,7 @@ module Api
         range = parsed_range
         return render_missing_range if range.nil?
 
-        events = current_teacher.calendar_events.in_range(*range).chronological
-        events = events.for_student(params[:student_id]) if params[:student_id].present?
-
-        render_success(events.map { |event| CalendarEventSerializer.render(event) })
+        render_success(events_in_range(range).map { |event| CalendarEventSerializer.render(event) })
       end
 
       # GET /api/v1/calendar_events/:id
@@ -55,6 +52,16 @@ module Api
       end
 
       private
+
+      # Attendees are preloaded because the serializer reads each event's
+      # attendee ids: a month of several hundred events would otherwise cost one
+      # query per event.
+      def events_in_range(range)
+        events = current_teacher.calendar_events.includes(:students).in_range(*range).chronological
+        return events if params[:student_id].blank?
+
+        events.for_student(params[:student_id])
+      end
 
       def set_calendar_event
         @calendar_event = current_teacher.calendar_events.find_by(id: params[:id])

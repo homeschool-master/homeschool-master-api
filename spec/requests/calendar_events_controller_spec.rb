@@ -90,12 +90,21 @@ RSpec.describe 'Api::V1::CalendarEvents', type: :request do
         expect(json_data.map { |e| e['title'] }).to eq(['Mine'])
       end
 
-      it 'includes the attendees on each event' do
+      it 'includes the attendee ids on each event' do
         student = FactoryBot.create(:student, teacher: @teacher, first_name: 'Emma')
         event = FactoryBot.create(:calendar_event, teacher: @teacher, **event_times(day: 15))
         FactoryBot.create(:event_attendee, calendar_event: event, student: student)
         get api_v1_calendar_events_url, params: week
-        expect(json_data.first['attendees'].map { |a| a['first_name'] }).to eq(['Emma'])
+        expect(json_data.first['attendee_ids']).to eq([student.id])
+      end
+
+      it 'does not nest student records on the events' do
+        student = FactoryBot.create(:student, teacher: @teacher, first_name: 'Emma')
+        event = FactoryBot.create(:calendar_event, teacher: @teacher, **event_times(day: 15))
+        FactoryBot.create(:event_attendee, calendar_event: event, student: student)
+        get api_v1_calendar_events_url, params: week
+        expect(json_data.first).not_to have_key('attendees')
+        expect(response.body).not_to include('Emma')
       end
     end
 
@@ -363,14 +372,14 @@ RSpec.describe 'Api::V1::CalendarEvents', type: :request do
         post api_v1_calendar_events_url, params: valid_params
         expect(json_data['title']).to eq('Math Lesson')
         expect(json_data['teacher_id']).to eq(@teacher.id)
-        expect(json_data['attendees']).to eq([])
+        expect(json_data['attendee_ids']).to eq([])
       end
 
       it 'attaches the submitted attendees' do
         emma = FactoryBot.create(:student, teacher: @teacher, first_name: 'Emma')
         noah = FactoryBot.create(:student, teacher: @teacher, first_name: 'Noah')
         post api_v1_calendar_events_url, params: valid_params.merge(student_ids: [emma.id, noah.id])
-        expect(json_data['attendees'].map { |a| a['first_name'] }).to contain_exactly('Emma', 'Noah')
+        expect(json_data['attendee_ids']).to contain_exactly(emma.id, noah.id)
       end
 
       it 'creates the attendee rows' do
@@ -508,9 +517,9 @@ RSpec.describe 'Api::V1::CalendarEvents', type: :request do
         expect(@event.reload.students).to eq([@noah])
       end
 
-      it 'returns the replaced attendees in the payload' do
+      it 'returns the replaced attendee ids in the payload' do
         patch api_v1_calendar_event_url(@event), params: { student_ids: [@noah.id] }
-        expect(json_data['attendees'].map { |a| a['first_name'] }).to eq(['Noah'])
+        expect(json_data['attendee_ids']).to eq([@noah.id])
       end
 
       it 'clears the attendees when sent an empty array' do
