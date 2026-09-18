@@ -61,6 +61,14 @@ module Api
         render_not_found('Calendar event') if @calendar_event.nil?
       end
 
+      # These read top-level params on purpose. The client sends camelCase and
+      # ApplicationController underscores every key, so start_time and friends
+      # are here by the time permit runs. Do not switch to
+      # params.require(:calendar_event): wrap_parameters builds that copy from
+      # the keys as they arrive, matched against column names, so a camelCase
+      # startTime never matches start_time and is left out. The wrapper holds
+      # only title, notes and location, and require would drop the timestamps
+      # and the all day flag silently, with no error.
       def calendar_event_params
         params.permit(:title, :notes, :location, :start_time, :end_time, :all_day)
       end

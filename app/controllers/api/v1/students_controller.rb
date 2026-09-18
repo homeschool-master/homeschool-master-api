@@ -50,6 +50,14 @@ module Api
         render_not_found('Student') if @student.nil?
       end
 
+      # This reads top-level params on purpose. The client sends camelCase and
+      # ApplicationController underscores every key, so first_name and friends
+      # are here by the time permit runs. Do not switch to
+      # params.require(:student): wrap_parameters builds that copy from the keys
+      # as they arrive, matched against column names, so firstName never matches
+      # first_name and is left out. Only color survives the wrapper, being the
+      # one column spelled the same either way, so require would build students
+      # with nothing but a colour and raise no error.
       def student_params
         params.permit(:first_name, :middle_name, :last_name, :grade_level, :color, :profile_image_url)
       end
