@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_18_140000) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_18_150000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -82,6 +82,19 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_140000) do
     t.index ["teacher_id"], name: "index_subjects_on_teacher_id"
   end
 
+  create_table "tasks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "teacher_id", null: false
+    t.string "title", null: false
+    t.text "description"
+    t.date "due_date"
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["completed_at"], name: "index_tasks_on_completed_at"
+    t.index ["teacher_id", "due_date"], name: "index_tasks_on_teacher_id_and_due_date"
+    t.index ["teacher_id"], name: "index_tasks_on_teacher_id"
+  end
+
   create_table "teachers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "first_name", null: false
     t.string "last_name", null: false
@@ -120,4 +133,5 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_140000) do
   add_foreign_key "refresh_tokens", "teachers"
   add_foreign_key "students", "teachers"
   add_foreign_key "subjects", "teachers"
+  add_foreign_key "tasks", "teachers"
 end

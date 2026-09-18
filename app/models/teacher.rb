@@ -12,6 +12,7 @@ class Teacher < ApplicationRecord
   has_many :students, dependent: :destroy
   has_many :calendar_events, dependent: :destroy
   has_many :subjects, dependent: :destroy
+  has_many :tasks, dependent: :destroy
 
   # Validations
   validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }
