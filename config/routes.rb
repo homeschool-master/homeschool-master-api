@@ -23,8 +23,8 @@ Rails.application.routes.draw do
       patch 'profile/preferences', to: 'preferences#update'
       patch 'notifications', to: 'notifications#update'
       patch 'onboarding', to: 'onboarding#update'
-      resources :students, only: %i[index show create update destroy]
-      resources :calendar_events, only: %i[index show create update destroy]
+      resources :students, :subjects, :calendar_events,
+                only: %i[index show create update destroy]
     end
   end
 

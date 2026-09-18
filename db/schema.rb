@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_10_130100) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_18_140000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -69,6 +69,19 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_10_130100) do
     t.index ["teacher_id"], name: "index_students_on_teacher_id"
   end
 
+  create_table "subjects", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "teacher_id", null: false
+    t.string "name", null: false
+    t.string "color"
+    t.text "description"
+    t.boolean "is_active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index "teacher_id, lower((name)::text)", name: "index_subjects_on_teacher_id_and_lower_name", unique: true, where: "is_active"
+    t.index ["is_active"], name: "index_subjects_on_is_active"
+    t.index ["teacher_id"], name: "index_subjects_on_teacher_id"
+  end
+
   create_table "teachers", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.string "first_name", null: false
     t.string "last_name", null: false
@@ -106,4 +119,5 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_10_130100) do
   add_foreign_key "event_attendees", "students", on_delete: :cascade
   add_foreign_key "refresh_tokens", "teachers"
   add_foreign_key "students", "teachers"
+  add_foreign_key "subjects", "teachers"
 end

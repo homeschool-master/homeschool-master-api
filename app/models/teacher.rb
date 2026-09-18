@@ -11,6 +11,7 @@ class Teacher < ApplicationRecord
   has_many :refresh_tokens, dependent: :destroy
   has_many :students, dependent: :destroy
   has_many :calendar_events, dependent: :destroy
+  has_many :subjects, dependent: :destroy
 
   # Validations
   validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }
@@ -20,9 +21,7 @@ class Teacher < ApplicationRecord
   validates :email, presence: true,
                     uniqueness: { case_sensitive: false },
                     format: { with: URI::MailTo::EMAIL_REGEXP }
-  validates :password, presence: true,
-                       length: { minimum: 8 },
-                       if: :password_required?
+  validates :password, presence: true, length: { minimum: 8 }, if: :password_required?
   validates :phone, length: { maximum: 20 }, allow_blank: true
   validates :time_zone, iana_time_zone: true
 
