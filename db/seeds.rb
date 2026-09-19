@@ -94,6 +94,7 @@ def demo_teacher(email:, first_name:, last_name:, time_zone: Teacher::DEFAULT_TI
   teacher.calendar_events.destroy_all
   teacher.students.destroy_all
   teacher.tasks.destroy_all
+  teacher.subjects.destroy_all
   teacher
 end
 
@@ -105,6 +106,16 @@ def add_student(teacher, first_name, last_name, grade_index, color_index, active
     grade_level: GRADE_LEVELS[grade_index % GRADE_LEVELS.length],
     color: COLORS[color_index % COLORS.length],
     is_active: active
+  )
+end
+
+# Colours come from the same palette the students use, so a subject and a
+# student pick from one list.
+def add_subject(teacher, name, color_index, description = nil)
+  teacher.subjects.create!(
+    name: name,
+    color: COLORS[color_index % COLORS.length],
+    description: description
   )
 end
 
@@ -198,6 +209,16 @@ ActiveRecord::Base.transaction do
                  students: [departed, whitfields[0]], location: 'Grace Chapel',
                  notes: 'Naomi is accompanying her sister.')
 
+  # A full classical spread, one colour each from the shared palette.
+  add_subject(one, 'Math', 0, 'Arithmetic, algebra and problem solving')
+  add_subject(one, 'Language Arts', 4, 'Reading, spelling, grammar and composition')
+  add_subject(one, 'Science', 2, 'Nature study, biology and the scientific method')
+  add_subject(one, 'History', 9, 'Ancients through to the modern era')
+  add_subject(one, 'Latin', 5)
+  add_subject(one, 'Art', 6, 'Drawing, painting and picture study')
+  add_subject(one, 'Music', 3)
+  add_subject(one, 'Bible', 11, 'Memory work and family study')
+
   # Her to-do list, covering every state the tasks UI has to draw: two already
   # late, one due today, two coming up, one with no date at all, and two ticked
   # off. Offsets from the run date, so the list means the same thing whenever
@@ -253,6 +274,12 @@ ActiveRecord::Base.transaction do
   add_event(two, title: 'Regional debate tournament', date: weekday(14), hour: [9, 0],
                  minutes: 300, students: [anselm, aldermans[0]], location: 'Northside High School')
 
+  # Ten students across a dozen subjects, including the specialist ones a
+  # bigger family splits out.
+  ['Math', 'Language Arts', 'Science', 'History', 'Geography', 'Latin', 'Logic',
+   'Art', 'Music Theory', 'Physical Education', 'Typing', 'Home Economics']
+    .each_with_index { |name, index| add_subject(two, name, index) }
+
   # A long list, so the dashboard panel has more open work than it shows and
   # the See More link has somewhere to go.
   [
@@ -267,7 +294,7 @@ ActiveRecord::Base.transaction do
   add_task(two, title: 'Order the winter term curriculum', due: Date.current - 14, done_days_ago: 6)
   add_task(two, title: 'Send term one progress notes to grandparents', done_days_ago: 2)
 
-  # 3: brand new. No students, no events: every empty state at once.
+  # 3: brand new. No students, no events, no subjects: every empty state at once.
   demo_teacher(email: 'teacher3@test.com', first_name: 'Priya', last_name: 'Raghavan')
 
   # 4: a teacher outside America/New_York, with evenings that land on the next
@@ -298,6 +325,11 @@ ActiveRecord::Base.transaction do
                     location: 'Kitchen table')
   end
 
+  add_subject(four, 'Astronomy', 4, 'Backyard observation and the night sky')
+  add_subject(four, 'Biology', 2)
+  add_subject(four, 'Literature', 5, 'Read alouds and the evening chapter book')
+  add_subject(four, 'Violin', 6)
+
   add_task(four, title: 'Swap the telescope filters before Thursday', due: Date.current + 3)
   add_task(four, title: 'Renew the observatory membership', due: Date.current - 3)
   add_task(four, title: 'Label the rock samples')
@@ -311,6 +343,10 @@ ActiveRecord::Base.transaction do
                     hour: [9, 30], minutes: 45, students: [wren], location: 'Kitchen table',
                     notes: NOTES[index % NOTES.length])
   end
+
+  add_subject(five, 'Phonics', 0)
+  add_subject(five, 'Math', 4)
+  add_subject(five, 'Nature Study', 2, 'Weekly walk and a notebook page')
 
   add_task(five, title: 'Buy a new reading journal', due: Date.current + 4)
   add_task(five, title: 'Ask the library about the phonics programme')
@@ -326,6 +362,9 @@ ActiveRecord::Base.transaction do
                    hour: [10, 0], minutes: 60, students: castellanos.sample(1),
                    location: 'Home classroom')
   end
+
+  add_subject(six, 'Math', 0)
+  add_subject(six, 'Reading', 4)
 
   # Nothing outstanding: the list exists but every item is ticked, which is a
   # different empty panel from having no tasks at all.
@@ -345,10 +384,15 @@ ActiveRecord::Base.transaction do
                      hour: [13, 0], minutes: 60, students: nakamuras.sample(1), location: location)
   end
 
+  add_subject(seven, 'Math', 0)
+  add_subject(seven, 'Science', 2)
+  add_subject(seven, 'Japanese', 5, 'Hiragana first, then basic conversation')
+
   add_task(seven, title: 'Confirm the co-op registration', due: Date.current + 10)
   add_task(seven, title: 'Order the spring term books', due: Date.current + 21)
 
-  # 8: students on the roster, nothing on the calendar, and no tasks either.
+  # 8: students on the roster, nothing on the calendar, and neither tasks nor
+  # subjects: the other teacher whose empty states are worth looking at.
   eight = demo_teacher(email: 'teacher8@test.com', first_name: 'Ruth', last_name: 'Adeyemi')
   add_student(eight, 'Folake', 'Adeyemi', 6, 4)
   add_student(eight, 'Tunde', 'Adeyemi', 3, 8)
@@ -375,6 +419,10 @@ ActiveRecord::Base.transaction do
                     location: 'Pemberton Community Education Center, east wing')
   end
 
+  add_subject(nine, 'Advanced Placement European History', 9,
+              'Seminar format, with the co-op discussion group on alternate weeks')
+  add_subject(nine, 'Intermediate Conversational Spanish', 2)
+
   add_task(nine, title: 'Coordinate the interdisciplinary humanities portfolio review with the ' \
                         'co-op assessment panel before the end of the term',
                  due: Date.current + 7,
@@ -389,17 +437,20 @@ ActiveRecord::Base.transaction do
   add_event(ten, title: 'First day of school', date: weekday(1), hour: [9, 0], minutes: 60,
                  students: [holt], location: 'Kitchen table',
                  notes: 'Take the front porch photo before we start.')
+  add_subject(ten, 'Kindergarten Readiness', 6, 'Letters, numbers and lots of reading')
+
   add_task(ten, title: 'Take the first day photo', due: Date.current + 1)
 end
 
 puts "Seeded demo teachers, anchored on #{ANCHOR}. Password for all: #{PASSWORD}"
 Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.each do |teacher|
   puts format(
-    '  %-20s %-24s students: %2d (+%d removed)  events: %4d  tasks: %2d (%d open)  %s',
+    '  %-20s %-24s students: %2d (+%d removed)  events: %4d  tasks: %2d (%d open)  subjects: %2d  %s',
     teacher.email, teacher.full_name,
     teacher.students.active.count, teacher.students.where(is_active: false).count,
     teacher.calendar_events.count,
     teacher.tasks.count, teacher.tasks.where(completed_at: nil).count,
+    teacher.subjects.active.count,
     teacher.effective_time_zone
   )
 end
