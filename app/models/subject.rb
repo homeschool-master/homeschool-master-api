@@ -7,6 +7,14 @@ class Subject < ApplicationRecord
   # Associations
   belongs_to :teacher
 
+  # The API never destroys a subject, it flips is_active, so an assignment keeps
+  # pointing at a removed subject and its history survives. This cascade exists
+  # for the one case that does destroy rows: deleting the teacher. Restricting
+  # instead would be a guard that never helps in normal use and breaks that
+  # cascade, since the teacher's subjects are destroyed before their
+  # assignments are.
+  has_many :assignments, dependent: :destroy
+
   # Validations
   #
   # Uniqueness is scoped to the teacher, so two families can both have Math,

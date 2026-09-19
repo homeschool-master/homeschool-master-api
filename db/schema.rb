@@ -10,10 +10,38 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_18_150000) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_18_160100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
+
+  create_table "assignment_grades", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "assignment_id", null: false
+    t.uuid "student_id", null: false
+    t.decimal "points_earned", precision: 10, scale: 2
+    t.text "notes"
+    t.datetime "graded_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assignment_id", "student_id"], name: "index_assignment_grades_on_assignment_id_and_student_id", unique: true
+    t.index ["assignment_id"], name: "index_assignment_grades_on_assignment_id"
+    t.index ["student_id"], name: "index_assignment_grades_on_student_id"
+  end
+
+  create_table "assignments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "teacher_id", null: false
+    t.uuid "subject_id", null: false
+    t.string "title", null: false
+    t.text "description"
+    t.date "due_date"
+    t.decimal "points_possible", precision: 10, scale: 2, default: "100.0", null: false
+    t.decimal "weight", precision: 10, scale: 2, default: "1.0", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["subject_id"], name: "index_assignments_on_subject_id"
+    t.index ["teacher_id", "due_date"], name: "index_assignments_on_teacher_id_and_due_date"
+    t.index ["teacher_id"], name: "index_assignments_on_teacher_id"
+  end
 
   create_table "calendar_events", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "teacher_id", null: false
@@ -127,6 +155,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_150000) do
     t.index ["password_reset_token"], name: "index_teachers_on_password_reset_token", unique: true
   end
 
+  add_foreign_key "assignment_grades", "assignments", on_delete: :cascade
+  add_foreign_key "assignment_grades", "students", on_delete: :cascade
+  add_foreign_key "assignments", "subjects"
+  add_foreign_key "assignments", "teachers"
   add_foreign_key "calendar_events", "teachers", on_delete: :cascade
   add_foreign_key "event_attendees", "calendar_events", on_delete: :cascade
   add_foreign_key "event_attendees", "students", on_delete: :cascade

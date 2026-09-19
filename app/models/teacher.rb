@@ -13,6 +13,7 @@ class Teacher < ApplicationRecord
   has_many :calendar_events, dependent: :destroy
   has_many :subjects, dependent: :destroy
   has_many :tasks, dependent: :destroy
+  has_many :assignments, dependent: :destroy
 
   # Validations
   validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }
@@ -56,10 +57,7 @@ class Teacher < ApplicationRecord
   end
 
   def verify_email!
-    update!(
-      email_verified_at: Time.current,
-      email_verification_token: nil
-    )
+    update!(email_verified_at: Time.current, email_verification_token: nil)
   end
 
   def generate_password_reset_token!

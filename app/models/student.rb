@@ -10,6 +10,9 @@ class Student < ApplicationRecord
   has_many :event_attendees, dependent: :destroy
   has_many :calendar_events, through: :event_attendees
 
+  has_many :assignment_grades, dependent: :destroy
+  has_many :assignments, through: :assignment_grades
+
   # Validations
   validates :first_name, presence: true, length: { maximum: 100 }
   validates :middle_name, length: { maximum: 100 }, allow_blank: true
