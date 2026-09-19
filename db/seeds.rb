@@ -93,6 +93,7 @@ def demo_teacher(email:, first_name:, last_name:, time_zone: Teacher::DEFAULT_TI
 
   teacher.calendar_events.destroy_all
   teacher.students.destroy_all
+  teacher.tasks.destroy_all
   teacher
 end
 
@@ -104,6 +105,18 @@ def add_student(teacher, first_name, last_name, grade_index, color_index, active
     grade_level: GRADE_LEVELS[grade_index % GRADE_LEVELS.length],
     color: COLORS[color_index % COLORS.length],
     is_active: active
+  )
+end
+
+# due is a Date or nil, and done_days_ago marks the task complete that many days
+# back. Both are relative to the run date, so the states this seeds keep meaning
+# the same thing whenever it is run.
+def add_task(teacher, title:, due: nil, notes: nil, done_days_ago: nil)
+  teacher.tasks.create!(
+    title: title,
+    description: notes,
+    due_date: due,
+    completed_at: done_days_ago && (Date.current - done_days_ago).to_time
   )
 end
 
@@ -185,6 +198,22 @@ ActiveRecord::Base.transaction do
                  students: [departed, whitfields[0]], location: 'Grace Chapel',
                  notes: 'Naomi is accompanying her sister.')
 
+  # Her to-do list, covering every state the tasks UI has to draw: two already
+  # late, one due today, two coming up, one with no date at all, and two ticked
+  # off. Offsets from the run date, so the list means the same thing whenever
+  # the seed runs.
+  add_task(one, title: 'Submit internet reimbursement', due: Date.current - 5,
+                notes: 'Attach the September bill and the enrolment letter.')
+  add_task(one, title: 'Return the library books', due: Date.current - 2)
+  add_task(one, title: 'Email co-op leader for winter schedule', due: Date.current,
+                notes: 'Ask whether the January start moved.')
+  add_task(one, title: 'Order printer ink and lined paper', due: Date.current + 2)
+  add_task(one, title: 'Book the science museum field trip', due: Date.current + 6,
+                notes: 'Group rate needs ten days notice.')
+  add_task(one, title: 'Sort the curriculum shelf by subject')
+  add_task(one, title: 'Renew the zoo membership', due: Date.current - 7, done_days_ago: 3)
+  add_task(one, title: 'Print the reading log for October', done_days_ago: 1)
+
   # 2: a heavy user. Ten students and a dense month, with one day loaded well
   # past the month grid's pill cap and the week column's scroll height.
   two = demo_teacher(email: 'teacher2@test.com', first_name: 'Marcus', last_name: 'Alderman')
@@ -224,6 +253,20 @@ ActiveRecord::Base.transaction do
   add_event(two, title: 'Regional debate tournament', date: weekday(14), hour: [9, 0],
                  minutes: 300, students: [anselm, aldermans[0]], location: 'Northside High School')
 
+  # A long list, so the dashboard panel has more open work than it shows and
+  # the See More link has somewhere to go.
+  [
+    ['Order ten sets of lab goggles', -9], ['Chase the missing algebra workbook', -4],
+    ['File the annual assessment paperwork', -1], ['Pay the co-op dues', 0],
+    ['Book the debate tournament hotel', 1], ['Restock the art cupboard', 3],
+    ['Plan the October field trip', 5], ['Renew the maths software licence', 8],
+    ['Email the piano teacher about recital slots', 12]
+  ].each { |title, offset| add_task(two, title: title, due: Date.current + offset) }
+
+  add_task(two, title: 'Sort out the shed storage')
+  add_task(two, title: 'Order the winter term curriculum', due: Date.current - 14, done_days_ago: 6)
+  add_task(two, title: 'Send term one progress notes to grandparents', done_days_ago: 2)
+
   # 3: brand new. No students, no events: every empty state at once.
   demo_teacher(email: 'teacher3@test.com', first_name: 'Priya', last_name: 'Raghavan')
 
@@ -255,6 +298,11 @@ ActiveRecord::Base.transaction do
                     location: 'Kitchen table')
   end
 
+  add_task(four, title: 'Swap the telescope filters before Thursday', due: Date.current + 3)
+  add_task(four, title: 'Renew the observatory membership', due: Date.current - 3)
+  add_task(four, title: 'Label the rock samples')
+  add_task(four, title: 'Order the violin sheet music', done_days_ago: 4)
+
   # 5: one student, the simplest real case.
   five = demo_teacher(email: 'teacher5@test.com', first_name: 'Grace', last_name: 'Bellweather')
   wren = add_student(five, 'Wren', 'Bellweather', 3, 12)
@@ -263,6 +311,9 @@ ActiveRecord::Base.transaction do
                     hour: [9, 30], minutes: 45, students: [wren], location: 'Kitchen table',
                     notes: NOTES[index % NOTES.length])
   end
+
+  add_task(five, title: 'Buy a new reading journal', due: Date.current + 4)
+  add_task(five, title: 'Ask the library about the phonics programme')
 
   # 6: everything in the past, nothing upcoming.
   six = demo_teacher(email: 'teacher6@test.com', first_name: 'Owen', last_name: 'Castellano')
@@ -276,6 +327,12 @@ ActiveRecord::Base.transaction do
                    location: 'Home classroom')
   end
 
+  # Nothing outstanding: the list exists but every item is ticked, which is a
+  # different empty panel from having no tasks at all.
+  add_task(six, title: 'File the attendance record for last term', due: Date.current - 30, done_days_ago: 25)
+  add_task(six, title: 'Return the borrowed microscope', due: Date.current - 20, done_days_ago: 18)
+  add_task(six, title: 'Archive the summer photographs', done_days_ago: 12)
+
   # 7: everything ahead, nothing has happened yet.
   seven = demo_teacher(email: 'teacher7@test.com', first_name: 'Beatrice', last_name: 'Nakamura')
   nakamuras = [
@@ -288,7 +345,10 @@ ActiveRecord::Base.transaction do
                      hour: [13, 0], minutes: 60, students: nakamuras.sample(1), location: location)
   end
 
-  # 8: students on the roster, nothing on the calendar.
+  add_task(seven, title: 'Confirm the co-op registration', due: Date.current + 10)
+  add_task(seven, title: 'Order the spring term books', due: Date.current + 21)
+
+  # 8: students on the roster, nothing on the calendar, and no tasks either.
   eight = demo_teacher(email: 'teacher8@test.com', first_name: 'Ruth', last_name: 'Adeyemi')
   add_student(eight, 'Folake', 'Adeyemi', 6, 4)
   add_student(eight, 'Tunde', 'Adeyemi', 3, 8)
@@ -315,20 +375,31 @@ ActiveRecord::Base.transaction do
                     location: 'Pemberton Community Education Center, east wing')
   end
 
-  # 10: nearly empty. One student, one event.
+  add_task(nine, title: 'Coordinate the interdisciplinary humanities portfolio review with the ' \
+                        'co-op assessment panel before the end of the term',
+                 due: Date.current + 7,
+                 notes: 'The panel wants the reading lists, the essay drafts and the marking ' \
+                        'rubric in one folder rather than three.')
+  add_task(nine, title: 'Reconcile the Pemberton Community Education Centre invoices against ' \
+                        'the quarterly enrichment budget')
+
+  # 10: nearly empty. One student, one event, one task.
   ten = demo_teacher(email: 'teacher10@test.com', first_name: 'Miriam', last_name: 'Holt')
   holt = add_student(ten, 'June', 'Holt', 0, 6)
   add_event(ten, title: 'First day of school', date: weekday(1), hour: [9, 0], minutes: 60,
                  students: [holt], location: 'Kitchen table',
                  notes: 'Take the front porch photo before we start.')
+  add_task(ten, title: 'Take the first day photo', due: Date.current + 1)
 end
 
 puts "Seeded demo teachers, anchored on #{ANCHOR}. Password for all: #{PASSWORD}"
 Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.each do |teacher|
   puts format(
-    '  %-20s %-24s students: %2d (+%d removed)  events: %4d  %s',
+    '  %-20s %-24s students: %2d (+%d removed)  events: %4d  tasks: %2d (%d open)  %s',
     teacher.email, teacher.full_name,
     teacher.students.active.count, teacher.students.where(is_active: false).count,
-    teacher.calendar_events.count, teacher.effective_time_zone
+    teacher.calendar_events.count,
+    teacher.tasks.count, teacher.tasks.where(completed_at: nil).count,
+    teacher.effective_time_zone
   )
 end
