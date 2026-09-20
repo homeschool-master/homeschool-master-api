@@ -4,6 +4,8 @@ module Api
   module V1
     class CalendarEventsController < BaseController
       include SeriesEditing
+      include SubmittedStudents
+      include CalendarSeries
 
       before_action :set_calendar_event, only: %i[show update destroy]
 
@@ -26,8 +28,8 @@ module Api
 
       # POST /api/v1/calendar_events
       def create
-        attendee_ids = submitted_attendee_ids
-        return render_unowned_attendees if attendee_ids && !attendees_owned?(attendee_ids)
+        attendee_ids = submitted_student_ids
+        return render_unowned_students if attendee_ids && !students_owned?(attendee_ids)
 
         event = build_event_with_rule
         return if performed?
@@ -42,11 +44,11 @@ module Api
       # occurrence of a series, scope says how far the edit reaches: this
       # occurrence, this and future, or all of them.
       def update
-        attendee_ids = submitted_attendee_ids
-        return render_unowned_attendees if attendee_ids && !attendees_owned?(attendee_ids)
+        attendee_ids = submitted_student_ids
+        return render_unowned_students if attendee_ids && !students_owned?(attendee_ids)
         return render_invalid_scope unless valid_scope?
 
-        update_series_or_event(attendee_ids)
+        update_series_or_record(attendee_ids)
       end
 
       # DELETE /api/v1/calendar_events/:id
@@ -55,7 +57,7 @@ module Api
       def destroy
         return render_invalid_scope unless valid_scope?
 
-        destroy_series_or_event
+        destroy_series_or_record
         render_no_content
       end
 
@@ -120,34 +122,11 @@ module Api
         params.permit(:title, :notes, :location, :start_time, :end_time, :all_day, :created_time_zone)
       end
 
-      # nil means the client did not submit attendees at all, so the existing
-      # set is left alone. An empty array clears it.
-      def submitted_attendee_ids
-        return nil unless params.key?(:student_ids)
-
-        Array(params.permit(student_ids: [])[:student_ids]).uniq
-      end
-
-      def attendees_owned?(student_ids)
-        return true if student_ids.empty?
-
-        current_teacher.students.where(id: student_ids).count == student_ids.size
-      end
-
       def render_missing_range
         render_error(
           'start_date and end_date are required and must be valid dates',
           code: 'VALIDATION_ERROR',
           status: :unprocessable_entity
-        )
-      end
-
-      def render_unowned_attendees
-        render_error(
-          'Validation failed',
-          code: 'VALIDATION_ERROR',
-          status: :unprocessable_entity,
-          details: { student_ids: ['must all belong to the current teacher'] }
         )
       end
 

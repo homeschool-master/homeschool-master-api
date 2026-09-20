@@ -184,14 +184,40 @@ def add_event(teacher, title:, date:, hour: nil, minutes: 60, students: [], loca
   event
 end
 
-# A repeating event: one row carrying a rule, expanded on read. weekdays are
-# 0 for Sunday through 6 for Saturday, and are only read for a weekly series.
-def repeat(event, frequency:, weekdays: [], monthly_anchor: nil, until_date: nil)
-  event.create_recurrence!(
+# A repeating event or task: one row carrying a rule, expanded on read. The
+# same helper serves both, because the rule is the same rule: only what an
+# occurrence is made of differs, and that is the owner's business rather than
+# the rule's. weekdays are 0 for Sunday through 6 for Saturday, and are only
+# read for a weekly series.
+def repeat(record, frequency:, weekdays: [], monthly_anchor: nil, until_date: nil)
+  record.create_recurrence!(
     frequency: frequency, weekdays: weekdays,
     monthly_anchor: monthly_anchor, until_date: until_date
   )
-  event
+  record
+end
+
+# One occurrence of a repeating task ticked off. A series has no row per
+# occurrence, so the tick names the date: this week being done says nothing
+# about next week.
+def tick_occurrence(task, date, done_days_ago: 0)
+  task.task_completions.create!(
+    occurrence_date: date, completed_at: (Date.current - done_days_ago).to_time
+  )
+end
+
+# One occurrence of a repeating task edited: it becomes a standalone task, and
+# the series records that the date is taken so the rule does not produce it
+# twice.
+def edit_task_occurrence(task, date, **overrides)
+  replacement = task.teacher.tasks.create!(
+    task.slice(:title, :description, :owned_by)
+        .merge('due_date' => date)
+        .merge(overrides.transform_keys(&:to_s))
+        .merge('students' => task.students.to_a)
+  )
+  task.recurrence.recurrence_exceptions.create!(occurrence_date: date, replacement_id: replacement.id)
+  replacement
 end
 
 # One occurrence taken out of a series: the rule still produces the rest.
@@ -210,6 +236,13 @@ def edit_occurrence(event, date, **overrides)
   replacement.students << event.students
   event.recurrence.recurrence_exceptions.create!(occurrence_date: date, replacement_id: replacement.id)
   replacement
+end
+
+# The most recent given weekday on or before today, which is the anchor a
+# weekly series wants: the series then has occurrences already behind it to
+# have been ticked, and more ahead of it still to do.
+def last_weekday(wday)
+  Date.current - ((Date.current.wday - wday) % 7)
 end
 
 # The nth occurrence of a weekday in a month: nth_weekday_of(month, 5, 2) is
@@ -416,6 +449,46 @@ ActiveRecord::Base.transaction do
                 students: [samuel], owned_by: 'both')
   add_task(one, title: 'Read one chapter a night', students: [samuel], owned_by: 'both')
 
+  # Her repeating to-dos, and the reference set for how a task series behaves.
+  #
+  # Weekly, with one week already ticked and the rest still open: a tick names
+  # the date it belongs to, so this Friday being done says nothing about next.
+  reimbursement = repeat(
+    add_task(one, title: 'Submit the internet reimbursement', due: last_weekday(5),
+                  notes: 'Attach the bill and the enrolment letter.'),
+    frequency: 'weekly', weekdays: [5]
+  )
+  tick_occurrence(reimbursement, last_weekday(5), done_days_ago: 1)
+  # One week it needed doing differently, and another it did not need doing at
+  # all: an edited occurrence is a standalone task, a skipped one is simply
+  # gone, and the rest of the series is untouched by either.
+  edit_task_occurrence(reimbursement, last_weekday(5) + 7,
+                       title: 'Submit the internet reimbursement with the new bill')
+  skip_occurrence(reimbursement, last_weekday(5) + 14)
+
+  # The same weekday position each month rather than the same date: the co-op
+  # dues are due on the first Monday, whichever date that lands on. The months
+  # with no such position simply have no occurrence rather than the task
+  # sliding into a week nobody picked.
+  repeat(
+    add_task(one, title: 'Pay the co-op dues', due: nth_weekday_of(ANCHOR, 1, 1),
+                  notes: 'First Monday, before the morning session.'),
+    frequency: 'monthly', monthly_anchor: 'weekday_position'
+  )
+
+  # Daily with an end in sight, and a student's rather than the teacher's.
+  repeat(
+    add_task(one, title: 'Practise the piano for twenty minutes', due: Date.current,
+                  students: [eliza], owned_by: 'student'),
+    frequency: 'daily', until_date: Date.current + 45
+  )
+
+  # Monthly on the same date, which is the other monthly anchor.
+  repeat(
+    add_task(one, title: 'Back up the school records', due: Date.current + 3),
+    frequency: 'monthly', monthly_anchor: 'day_of_month'
+  )
+
   # 2: a heavy user. Ten students and a dense month, with one day loaded well
   # past the month grid's pill cap and the week column's scroll height.
   two = demo_teacher(email: 'teacher2@test.com', first_name: 'Marcus', last_name: 'Alderman')
@@ -509,6 +582,14 @@ ActiveRecord::Base.transaction do
   ].each { |title, offset| add_task(two, title: title, due: Date.current + offset) }
 
   add_task(two, title: 'Sort out the shed storage')
+
+  # A weekly series on a busy account, with two weeks already ticked.
+  registers = repeat(
+    add_task(two, title: 'Mark the weekly registers', due: last_weekday(1)),
+    frequency: 'weekly', weekdays: [1]
+  )
+  tick_occurrence(registers, last_weekday(1), done_days_ago: 0)
+  tick_occurrence(registers, last_weekday(1) - 7, done_days_ago: 7)
   add_task(two, title: 'Order the winter term curriculum', due: Date.current - 14, done_days_ago: 6)
   add_task(two, title: 'Send term one progress notes to grandparents', done_days_ago: 2)
 
@@ -766,7 +847,7 @@ end
 puts "Seeded demo teachers, anchored on #{ANCHOR}. Password for all: #{PASSWORD}"
 Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.each do |teacher|
   puts format(
-    '  %-20s %-24s students: %2d (+%d removed)  events: %4d (%d series)  tasks: %2d (%d open, %d theirs)  ' \
+    '  %-20s %-24s students: %2d (+%d removed)  events: %4d (%d series)  tasks: %2d (%d open, %d theirs, %d repeating)  ' \
     'subjects: %2d  assignments: %2d  grades: %3d (%d marked)  %s',
     teacher.email, teacher.full_name,
     teacher.students.active.count, teacher.students.where(is_active: false).count,
@@ -774,7 +855,7 @@ Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.ea
     Recurrence.where(recurrable_type: 'CalendarEvent',
                      recurrable_id: teacher.calendar_events.select(:id)).count,
     teacher.tasks.count, teacher.tasks.where(completed_at: nil).count,
-    teacher.tasks.where.not(owned_by: 'teacher').count,
+    teacher.tasks.where.not(owned_by: 'teacher').count, teacher.tasks.series.count,
     teacher.subjects.active.count,
     teacher.assignments.count,
     AssignmentGrade.joins(:assignment).where(assignments: { teacher_id: teacher.id }).count,

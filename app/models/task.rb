@@ -17,10 +17,18 @@ class Task < ApplicationRecord
   has_many :task_students, dependent: :destroy
   has_many :students, through: :task_students
 
+  # A series carries its rule; an ordinary task has none, which is what keeps
+  # every task created before this feature working untouched.
+  has_one :recurrence, as: :recurrable, dependent: :destroy
+  # The ticked occurrences of a series. An ordinary task has none: its
+  # completion is the completed_at column below.
+  has_many :task_completions, dependent: :destroy
+
   # Validations
   validates :title, presence: true, length: { maximum: 255 }
   validates :owned_by, inclusion: { in: OWNERS }
   validate :student_owned_task_names_a_student
+  validate :repeating_task_has_a_due_date
 
   # Scopes
   scope :open, -> { where(completed_at: nil) }
@@ -40,6 +48,18 @@ class Task < ApplicationRecord
   # Soonest first, undated last: a task with no due date is not due soon, so it
   # belongs at the end of a list the dashboard reads from the top.
   scope :by_due_date, -> { order(Arel.sql('due_date ASC NULLS LAST, created_at ASC')) }
+
+  # Tasks that repeat, and tasks that do not. Every query has to serve both:
+  # one row stands for itself, the other stands for a series to be expanded.
+  scope :single, -> { where.missing(:recurrence) }
+  scope :series, -> { where.associated(:recurrence) }
+  # A series can reach a window when it is anchored on or before the end of it
+  # and has not already finished by the start of it. Whether it actually lands
+  # inside is the schedule's business, not the query's.
+  scope :series_reaching, lambda { |to, from|
+    series.where(due_date: ..to)
+          .where('recurrences.until_date IS NULL OR recurrences.until_date >= ?', from)
+  }
 
   # Completion is stored as the instant it happened, not as a boolean. The two
   # are not equivalent: the timestamp answers "is it done" as well as a flag
@@ -77,6 +97,16 @@ class Task < ApplicationRecord
     owned_by != 'teacher'
   end
 
+  def recurring?
+    recurrence.present?
+  end
+
+  # The day the series repeats from. A task with no due date has no anchor, so
+  # it cannot repeat: there is no date to step forward from.
+  def anchor_date
+    due_date
+  end
+
   private
 
   # A task that is a student's has to say whose. "Finish the science fair
@@ -92,6 +122,15 @@ class Task < ApplicationRecord
     return if students.any? || task_students.any?
 
     errors.add(:student_ids, 'must name at least one student when the task is a student\'s')
+  end
+
+  # There is nothing to repeat from without one. The form hides the repeat
+  # controls until a date is picked, and this is the same rule stated where it
+  # cannot be bypassed.
+  def repeating_task_has_a_due_date
+    return if recurrence.nil? || due_date.present?
+
+    errors.add(:due_date, 'is needed before a task can repeat')
   end
 
   def nullify_blank_description

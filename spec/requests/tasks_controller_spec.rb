@@ -123,6 +123,183 @@ RSpec.describe 'Api::V1::Tasks', type: :request do
     end
   end
 
+  describe 'repeating tasks' do
+    def sign_in_teacher
+      @teacher = FactoryBot.create(:teacher)
+      sign_in(@teacher)
+    end
+
+    # Weekly on Fridays from 4 September 2026: 4, 11, 18, 25 September.
+    def weekly_task(title: 'Submit reimbursement')
+      task = FactoryBot.create(:task, teacher: @teacher, title: title, due_date: Date.new(2026, 9, 4))
+      task.create_recurrence!(frequency: 'weekly', weekdays: [5])
+      task.reload
+    end
+
+    def window
+      { from: '2026-09-01', to: '2026-09-30' }
+    end
+
+    def listed
+      JSON.parse(response.body)['data']
+    end
+
+    before { sign_in_teacher }
+
+    describe 'expansion over the index' do
+      it 'returns one entry per occurrence, each named by its date' do
+        task = weekly_task
+        get api_v1_tasks_url, params: window
+        expect(listed.map { |row| row['due_date'] }).to eq(%w[2026-09-04 2026-09-11 2026-09-18 2026-09-25])
+        expect(listed.map { |row| row['id'] }).to all(start_with("#{task.id}:"))
+        expect(listed.map { |row| row['series_id'] }).to all(eq(task.id))
+      end
+
+      it 'returns an ordinary task whatever its due date, since only series are windowed' do
+        FactoryBot.create(:task, teacher: @teacher, title: 'Far off', due_date: Date.new(2030, 1, 1))
+        get api_v1_tasks_url, params: window
+        expect(listed.map { |row| row['title'] }).to include('Far off')
+      end
+    end
+
+    describe 'ticking one occurrence' do
+      it 'marks that occurrence done and leaves the others alone' do
+        task = weekly_task
+        patch api_v1_task_url("#{task.id}:2026-09-11"), params: { completed: true }
+        expect(response).to have_http_status(:ok)
+
+        get api_v1_tasks_url, params: window
+        expect(listed.map { |row| [row['due_date'], row['completed']] })
+          .to eq([['2026-09-04', false], ['2026-09-11', true],
+                  ['2026-09-18', false], ['2026-09-25', false]])
+      end
+
+      it 'records it as a row of its own rather than on the series' do
+        task = weekly_task
+        expect { patch api_v1_task_url("#{task.id}:2026-09-11"), params: { completed: true } }
+          .to change(TaskCompletion, :count).by(1)
+        expect(task.reload.completed_at).to be_nil
+      end
+
+      it 'unticking deletes the row again' do
+        task = weekly_task
+        patch api_v1_task_url("#{task.id}:2026-09-11"), params: { completed: true }
+        expect { patch api_v1_task_url("#{task.id}:2026-09-11"), params: { completed: false } }
+          .to change(TaskCompletion, :count).by(-1)
+
+        get api_v1_tasks_url, params: window
+        expect(listed.map { |row| row['completed'] }).to all(be(false))
+      end
+
+      it 'keeps the original time when ticked twice' do
+        task = weekly_task
+        patch api_v1_task_url("#{task.id}:2026-09-11"), params: { completed: true }
+        first = TaskCompletion.sole.completed_at
+        patch api_v1_task_url("#{task.id}:2026-09-11"), params: { completed: true }
+        expect(TaskCompletion.sole.completed_at).to eq(first)
+      end
+
+      it 'leaves an ordinary task ticking its own column' do
+        task = FactoryBot.create(:task, teacher: @teacher)
+        patch api_v1_task_url(task), params: { completed: true }
+        expect(task.reload.completed_at).to be_present
+        expect(TaskCompletion.count).to eq(0)
+      end
+
+      it 'filters on the occurrence rather than the series' do
+        task = weekly_task
+        patch api_v1_task_url("#{task.id}:2026-09-11"), params: { completed: true }
+
+        get api_v1_tasks_url, params: window.merge(completed: 'false')
+        expect(listed.map { |row| row['due_date'] }).to eq(%w[2026-09-04 2026-09-18 2026-09-25])
+        get api_v1_tasks_url, params: window.merge(completed: 'true')
+        expect(listed.map { |row| row['due_date'] }).to eq(['2026-09-11'])
+      end
+    end
+
+    describe 'the three edit modes' do
+      it 'this occurrence detaches it and leaves the rest' do
+        task = weekly_task
+        patch api_v1_task_url("#{task.id}:2026-09-18"),
+              params: { title: 'With receipts', scope: 'this' }
+        expect(response).to have_http_status(:ok)
+
+        get api_v1_tasks_url, params: window
+        titles = listed.map { |row| [row['due_date'], row['title']] }
+        expect(titles).to contain_exactly(
+          ['2026-09-04', 'Submit reimbursement'], ['2026-09-11', 'Submit reimbursement'],
+          ['2026-09-18', 'With receipts'], ['2026-09-25', 'Submit reimbursement']
+        )
+      end
+
+      it 'this and future splits the series' do
+        task = weekly_task
+        patch api_v1_task_url("#{task.id}:2026-09-18"),
+              params: { title: 'Submit online', scope: 'this_and_future' }
+
+        get api_v1_tasks_url, params: window
+        expect(listed.map { |row| [row['due_date'], row['title']] })
+          .to eq([['2026-09-04', 'Submit reimbursement'], ['2026-09-11', 'Submit reimbursement'],
+                  ['2026-09-18', 'Submit online'], ['2026-09-25', 'Submit online']])
+      end
+
+      it 'all rewrites every occurrence' do
+        task = weekly_task
+        patch api_v1_task_url("#{task.id}:2026-09-18"), params: { title: 'Renamed', scope: 'all' }
+
+        get api_v1_tasks_url, params: window
+        expect(listed.map { |row| row['title'] }).to all(eq('Renamed'))
+      end
+
+      it 'rejects a scope it does not know' do
+        task = weekly_task
+        patch api_v1_task_url("#{task.id}:2026-09-18"), params: { title: 'x', scope: 'sideways' }
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+    end
+
+    describe 'the two delete modes' do
+      it 'this occurrence removes only that one' do
+        task = weekly_task
+        delete api_v1_task_url("#{task.id}:2026-09-11"), params: { scope: 'this' }
+        expect(response).to have_http_status(:no_content)
+
+        get api_v1_tasks_url, params: window
+        expect(listed.map { |row| row['due_date'] }).to eq(%w[2026-09-04 2026-09-18 2026-09-25])
+      end
+
+      it 'this and future ends the series the day before' do
+        task = weekly_task
+        delete api_v1_task_url("#{task.id}:2026-09-18"), params: { scope: 'this_and_future' }
+
+        get api_v1_tasks_url, params: window
+        expect(listed.map { |row| row['due_date'] }).to eq(%w[2026-09-04 2026-09-11])
+      end
+
+      it 'all removes the whole series' do
+        task = weekly_task
+        expect { delete api_v1_task_url(task.id), params: { scope: 'all' } }
+          .to change(Task, :count).by(-1)
+      end
+    end
+
+    describe 'a rule needs something to repeat from' do
+      it 'refuses a repeating task with no due date' do
+        post api_v1_tasks_url, params: { title: 'Nowhere to start',
+                                         recurrence: { frequency: 'daily' } }
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it 'drops the ticks when a task stops repeating' do
+        task = weekly_task
+        patch api_v1_task_url("#{task.id}:2026-09-11"), params: { completed: true }
+        expect { patch api_v1_task_url(task.id), params: { recurrence: '' } }
+          .to change(TaskCompletion, :count).by(-1)
+        expect(task.reload.recurrence).to be_nil
+      end
+    end
+  end
+
   describe 'GET /api/v1/tasks/:id' do
     context 'when authenticated' do
       before do

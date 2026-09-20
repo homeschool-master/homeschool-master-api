@@ -1,24 +1,57 @@
 # frozen_string_literal: true
 
-# The part of the calendar events controller that is about series rather than
-# about events: which occurrences an edit reaches, and how a rule is attached.
+# The part of a controller that is about series rather than about the thing
+# that repeats: which occurrences an edit reaches, and how a rule is attached.
 #
-# Its own file because the controller was already at its length limit and
-# because none of this is about handling a request: it is the calendar's three
-# way choice expressed once.
+# Shared by calendar events and tasks, because the three way choice is the same
+# choice for both and should not exist twice. What differs between them is
+# supplied by the five hooks below: which record is being edited, which editor
+# knows how to detach and split it, which params it permits, how it is
+# rendered, and how a whole record update is applied. Everything else,
+# including what "this and future" means at the very first occurrence, is the
+# same for a lesson and a to-do.
 module SeriesEditing
   extend ActiveSupport::Concern
 
   private
 
-  # Absent means all of it, which is the only answer an ordinary event has and
+  # Hooks. Each including controller answers these for its own kind.
+  def series_record
+    raise NotImplementedError
+  end
+
+  def series_editor
+    raise NotImplementedError
+  end
+
+  def series_params
+    raise NotImplementedError
+  end
+
+  def render_series(record)
+    raise NotImplementedError
+  end
+
+  # Applies an edit that reaches the whole record, returning whether it saved.
+  # Left to the controller because assigning members differs: an event writes
+  # its attendees after saving, a task has to have its students before it is
+  # valid at all.
+  def apply_whole_update(_members)
+    raise NotImplementedError
+  end
+
+  # Absent means all of it, which is the only answer an ordinary record has and
   # the safe reading for a client that has not been taught the choice.
   def edit_scope
     params[:scope].presence || 'all'
   end
 
+  def series_scopes
+    series_editor.class::SCOPES
+  end
+
   def valid_scope?
-    EventSeriesEdit::SCOPES.include?(edit_scope)
+    series_scopes.include?(edit_scope)
   end
 
   def render_invalid_scope
@@ -26,77 +59,56 @@ module SeriesEditing
       'Validation failed',
       code: 'VALIDATION_ERROR',
       status: :unprocessable_entity,
-      details: { scope: ["must be one of #{EventSeriesEdit::SCOPES.join(', ')}"] }
+      details: { scope: ["must be one of #{series_scopes.join(', ')}"] }
     )
-  end
-
-  # Showing one occurrence rebuilds just that one, so its times are the
-  # occurrence's own rather than the series anchor's.
-  def shown_occurrence
-    return nil if @occurrence_date.nil? || !@calendar_event.recurring?
-
-    EventOccurrences.call(@calendar_event, from: @occurrence_date, to: @occurrence_date,
-                                           time_zone: current_teacher.effective_time_zone).first
-  end
-
-  def series_edit
-    EventSeriesEdit.new(@calendar_event, occurrence_date: @occurrence_date,
-                                         time_zone: current_teacher.effective_time_zone)
   end
 
   # Only a named occurrence of a real series can be edited narrowly: without a
   # date there is nothing to be "this" or to split at.
   def narrow_edit?
-    @occurrence_date.present? && @calendar_event.recurring? && edit_scope != 'all'
+    @occurrence_date.present? && series_record.recurring? && edit_scope != 'all'
   end
 
-  def update_series_or_event(attendee_ids)
-    return update_whole(attendee_ids) unless narrow_edit?
+  def update_series_or_record(members)
+    return update_whole(members) unless narrow_edit?
 
-    editor = series_edit
+    editor = series_editor
     # Splitting at the first occurrence leaves nothing behind, so it is the
     # same request as editing the whole series and is answered as one.
-    return update_whole(attendee_ids) if edit_scope == 'this_and_future' && editor.first_occurrence?
+    return update_whole(members) if edit_scope == 'this_and_future' && editor.first_occurrence?
 
-    render_detached(editor, attendee_ids)
+    render_detached(editor, members)
   end
 
-  def render_detached(editor, attendee_ids)
+  def render_detached(editor, members)
     result =
       if edit_scope == 'this'
-        editor.detach(calendar_event_params, attendee_ids)
+        editor.detach(series_params, members)
       else
-        editor.split(calendar_event_params, attendee_ids)
+        editor.split(series_params, members)
       end
 
     return render_validation_errors(result) unless result.persisted?
 
-    render_success(CalendarEventSerializer.render(result))
+    render_success(render_series(result))
   end
 
-  def update_whole(attendee_ids)
-    @calendar_event.assign_attributes(calendar_event_params)
-    rule = assign_rule(@calendar_event)
-    return render_validation_errors(@calendar_event) unless @calendar_event.valid?
-    return render_validation_errors(rule) if rule&.invalid?
+  def update_whole(members)
+    return unless apply_whole_update(members)
 
-    save_with_attendees(@calendar_event, attendee_ids)
-    # Saving the event saves a rule it has just been given, but not changes to
-    # one it already had: a has_one only autosaves a child that is new.
-    rule&.save!
-    render_success(CalendarEventSerializer.render(@calendar_event))
+    render_success(render_series(series_record))
   end
 
-  def destroy_series_or_event
-    return series_edit.skip if narrow_edit? && edit_scope == 'this'
+  def destroy_series_or_record
+    return series_editor.skip if narrow_edit? && edit_scope == 'this'
     return truncate_or_destroy if narrow_edit?
-    return series_edit.destroy_series if @calendar_event.recurring?
+    return series_editor.destroy_series if series_record.recurring?
 
-    @calendar_event.destroy
+    series_record.destroy
   end
 
   def truncate_or_destroy
-    editor = series_edit
+    editor = series_editor
     # Nothing survives in front of the first occurrence, so ending the series
     # there is the same as removing it.
     editor.first_occurrence? ? editor.destroy_series : editor.truncate
@@ -104,16 +116,28 @@ module SeriesEditing
 
   # nil is "leave the rule alone", an explicit null or empty object is "stop
   # repeating", and a rule replaces whatever was there.
-  def assign_rule(event)
+  def assign_rule(record)
     return nil unless params.key?(:recurrence)
 
     rule = recurrence_params
-    return event.recurrence&.destroy && nil if rule.blank?
+    return stop_repeating(record) if rule.blank?
 
-    return event.build_recurrence(rule) if event.recurrence.nil?
+    return record.build_recurrence(rule) if record.recurrence.nil?
 
-    event.recurrence.assign_attributes(rule)
-    event.recurrence
+    record.recurrence.assign_attributes(rule)
+    record.recurrence
+  end
+
+  # Destroying the rule leaves the association still holding the destroyed
+  # object, so anything asking afterwards whether the record still repeats gets
+  # the wrong answer. Reloading is what makes "it no longer repeats" true.
+  def stop_repeating(record)
+    existing = record.recurrence
+    return nil if existing.nil?
+
+    existing.destroy
+    record.reload_recurrence
+    nil
   end
 
   def recurrence_params
