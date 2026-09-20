@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_20_120100) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_20_140100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -66,6 +66,29 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_20_120100) do
     t.index ["calendar_event_id", "student_id"], name: "index_event_attendees_on_calendar_event_id_and_student_id", unique: true
     t.index ["calendar_event_id"], name: "index_event_attendees_on_calendar_event_id"
     t.index ["student_id"], name: "index_event_attendees_on_student_id"
+  end
+
+  create_table "recurrence_exceptions", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "recurrence_id", null: false
+    t.date "occurrence_date", null: false
+    t.uuid "replacement_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["recurrence_id", "occurrence_date"], name: "index_recurrence_exceptions_on_series_and_date", unique: true
+    t.index ["recurrence_id"], name: "index_recurrence_exceptions_on_recurrence_id"
+  end
+
+  create_table "recurrences", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.string "recurrable_type", null: false
+    t.uuid "recurrable_id", null: false
+    t.string "frequency", null: false
+    t.integer "weekdays", default: [], null: false, array: true
+    t.string "monthly_anchor"
+    t.date "until_date"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["recurrable_type", "recurrable_id"], name: "index_recurrences_on_owner", unique: true
+    t.index ["recurrable_type", "recurrable_id"], name: "index_recurrences_on_recurrable"
   end
 
   create_table "refresh_tokens", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -174,6 +197,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_20_120100) do
   add_foreign_key "calendar_events", "teachers", on_delete: :cascade
   add_foreign_key "event_attendees", "calendar_events", on_delete: :cascade
   add_foreign_key "event_attendees", "students", on_delete: :cascade
+  add_foreign_key "recurrence_exceptions", "recurrences", on_delete: :cascade
   add_foreign_key "refresh_tokens", "teachers"
   add_foreign_key "students", "teachers"
   add_foreign_key "subjects", "teachers"

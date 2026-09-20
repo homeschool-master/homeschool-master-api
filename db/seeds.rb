@@ -184,6 +184,41 @@ def add_event(teacher, title:, date:, hour: nil, minutes: 60, students: [], loca
   event
 end
 
+# A repeating event: one row carrying a rule, expanded on read. weekdays are
+# 0 for Sunday through 6 for Saturday, and are only read for a weekly series.
+def repeat(event, frequency:, weekdays: [], monthly_anchor: nil, until_date: nil)
+  event.create_recurrence!(
+    frequency: frequency, weekdays: weekdays,
+    monthly_anchor: monthly_anchor, until_date: until_date
+  )
+  event
+end
+
+# One occurrence taken out of a series: the rule still produces the rest.
+def skip_occurrence(event, date)
+  event.recurrence.recurrence_exceptions.create!(occurrence_date: date)
+end
+
+# One occurrence edited: it becomes a standalone event, and the series records
+# that the date is taken so the rule does not produce it twice.
+def edit_occurrence(event, date, **overrides)
+  replacement = event.teacher.calendar_events.create!(
+    event.slice(:title, :notes, :location, :all_day, :created_time_zone)
+         .merge('start_time' => event.start_time, 'end_time' => event.end_time)
+         .merge(overrides.transform_keys(&:to_s))
+  )
+  replacement.students << event.students
+  event.recurrence.recurrence_exceptions.create!(occurrence_date: date, replacement_id: replacement.id)
+  replacement
+end
+
+# The nth occurrence of a weekday in a month: nth_weekday_of(month, 5, 2) is
+# the second Friday, which is the anchor a monthly by position series needs.
+def nth_weekday_of(month, wday, position)
+  first = Date.new(month.year, month.month, 1)
+  first + ((wday - first.wday) % 7) + ((position - 1) * 7)
+end
+
 # The nth weekday of the anchored month, counting from zero. Lessons land on
 # school days rather than scattering across weekends.
 def weekday(offset)
@@ -240,6 +275,45 @@ ActiveRecord::Base.transaction do
   add_event(one, title: 'Piano recital', date: weekday(12), hour: [17, 0], minutes: 120,
                  students: [departed, whitfields[0]], location: 'Grace Chapel',
                  notes: 'Naomi is accompanying her sister.')
+
+  # Her repeating timetable, and the reference set for how a series behaves.
+  #
+  # Two days at once, so Tuesday and Thursday Latin is one series rather than
+  # two. No end date: it simply keeps going, which is what a timetable does.
+  latin = repeat(
+    add_event(one, title: 'Latin drill', date: ANCHOR, hour: [9, 0], minutes: 30,
+                   students: whitfields.first(2), location: 'Kitchen table'),
+    frequency: 'weekly', weekdays: [2, 4]
+  )
+  # One week it moved to the afternoon: an edited occurrence is a standalone
+  # event, and the series stops producing that date.
+  edit_occurrence(latin, ANCHOR + 14, title: 'Latin drill, moved to the afternoon',
+                         start_time: local_time(one.effective_time_zone, ANCHOR + 14, 15, 0),
+                         end_time: local_time(one.effective_time_zone, ANCHOR + 14, 15, 30))
+  # Another week it did not happen at all.
+  skip_occurrence(latin, ANCHOR + 21)
+
+  # The same weekday position each month rather than the same date: the co-op
+  # meets on the second Friday, whichever date that falls on.
+  repeat(
+    add_event(one, title: 'Co-op morning', date: nth_weekday_of(ANCHOR, 5, 2), hour: [10, 0],
+                   minutes: 180, students: whitfields, location: 'Grace Chapel'),
+    frequency: 'monthly', monthly_anchor: 'weekday_position'
+  )
+
+  # A series that has ended: swimming ran weekly through the summer and stopped.
+  repeat(
+    add_event(one, title: 'Swim lessons', date: ANCHOR - 60, hour: [16, 0], minutes: 45,
+                   students: whitfields.last(2), location: 'Community pool'),
+    frequency: 'weekly', weekdays: [3], until_date: ANCHOR - 7
+  )
+
+  # Every day, with an end in sight: the read aloud runs to the end of term.
+  repeat(
+    add_event(one, title: 'Morning read aloud', date: ANCHOR, hour: [8, 0], minutes: 20,
+                   students: whitfields, location: 'Living room'),
+    frequency: 'daily', until_date: ANCHOR + 90
+  )
 
   # A full classical spread, one colour each from the shared palette.
   one_math = add_subject(one, 'Math', 0, 'Arithmetic, algebra and problem solving')
@@ -482,6 +556,16 @@ ActiveRecord::Base.transaction do
                     location: 'Kitchen table')
   end
 
+  # Pacific, and repeating every week with no end: the series runs straight
+  # through the November change, so its occurrences read 7pm on both sides of
+  # it while sitting at two different UTC instants. This is the one to look at
+  # when checking that expansion happens in the teacher's zone.
+  repeat(
+    add_event(four, title: 'Evening sky watch', date: ANCHOR, hour: [19, 0], minutes: 60,
+                    students: okafors, location: 'Back porch'),
+    frequency: 'weekly', weekdays: [5]
+  )
+
   four_astronomy = add_subject(four, 'Astronomy', 4, 'Backyard observation and the night sky')
   four_biology = add_subject(four, 'Biology', 2)
   four_literature = add_subject(four, 'Literature', 5, 'Read alouds and the evening chapter book')
@@ -682,11 +766,13 @@ end
 puts "Seeded demo teachers, anchored on #{ANCHOR}. Password for all: #{PASSWORD}"
 Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.each do |teacher|
   puts format(
-    '  %-20s %-24s students: %2d (+%d removed)  events: %4d  tasks: %2d (%d open, %d theirs)  ' \
+    '  %-20s %-24s students: %2d (+%d removed)  events: %4d (%d series)  tasks: %2d (%d open, %d theirs)  ' \
     'subjects: %2d  assignments: %2d  grades: %3d (%d marked)  %s',
     teacher.email, teacher.full_name,
     teacher.students.active.count, teacher.students.where(is_active: false).count,
     teacher.calendar_events.count,
+    Recurrence.where(recurrable_type: 'CalendarEvent',
+                     recurrable_id: teacher.calendar_events.select(:id)).count,
     teacher.tasks.count, teacher.tasks.where(completed_at: nil).count,
     teacher.tasks.where.not(owned_by: 'teacher').count,
     teacher.subjects.active.count,
