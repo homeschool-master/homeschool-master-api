@@ -24,7 +24,13 @@ class CalendarEvent < ApplicationRecord
   scope :in_range, lambda { |range_start, range_end|
     where(start_time: ..range_end).where(end_time: range_start..)
   }
-  scope :for_student, ->(student_id) { joins(:event_attendees).where(event_attendees: { student_id: student_id }) }
+  # Any of them, not all of them: a lesson two children sit together belongs
+  # on both their calendars, and asking for the pair means either, not the
+  # intersection. distinct because the join repeats an event once per selected
+  # attendee it has.
+  scope :for_students, lambda { |student_ids|
+    joins(:event_attendees).where(event_attendees: { student_id: student_ids }).distinct
+  }
   scope :chronological, -> { order(start_time: :asc) }
 
   private

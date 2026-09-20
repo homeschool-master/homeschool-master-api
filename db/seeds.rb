@@ -126,12 +126,19 @@ end
 # due is a Date or nil, and done_days_ago marks the task complete that many days
 # back. Both are relative to the run date, so the states this seeds keep meaning
 # the same thing whenever it is run.
-def add_task(teacher, title:, due: nil, notes: nil, done_days_ago: nil)
+#
+# students names who the task concerns and owned_by says whose job it is. The
+# two are separate on purpose: "Print the reading log" names Ruth and is the
+# teacher's work, while "Finish the science fair project" names Eliza and is
+# hers. A task that is a student's has to name at least one.
+def add_task(teacher, title:, due: nil, notes: nil, done_days_ago: nil, students: [], owned_by: 'teacher')
   teacher.tasks.create!(
     title: title,
     description: notes,
     due_date: due,
-    completed_at: done_days_ago && (Date.current - done_days_ago).to_time
+    completed_at: done_days_ago && (Date.current - done_days_ago).to_time,
+    owned_by: owned_by,
+    students: Array(students)
   )
 end
 
@@ -300,17 +307,40 @@ ActiveRecord::Base.transaction do
   # late, one due today, two coming up, one with no date at all, and two ticked
   # off. Offsets from the run date, so the list means the same thing whenever
   # the seed runs.
+  # Her own admin, naming nobody: the plain case tasks have always been.
   add_task(one, title: 'Submit internet reimbursement', due: Date.current - 5,
                 notes: 'Attach the September bill and the enrolment letter.')
-  add_task(one, title: 'Return the library books', due: Date.current - 2)
   add_task(one, title: 'Email co-op leader for winter schedule', due: Date.current,
                 notes: 'Ask whether the January start moved.')
   add_task(one, title: 'Order printer ink and lined paper', due: Date.current + 2)
-  add_task(one, title: 'Book the science museum field trip', due: Date.current + 6,
-                notes: 'Group rate needs ten days notice.')
   add_task(one, title: 'Sort the curriculum shelf by subject')
   add_task(one, title: 'Renew the zoo membership', due: Date.current - 7, done_days_ago: 3)
-  add_task(one, title: 'Print the reading log for October', done_days_ago: 1)
+
+  # Hers to do, about them: the pair that names students without handing the
+  # work over, which is the distinction owned_by exists to record.
+  add_task(one, title: 'Book the science museum field trip', due: Date.current + 6,
+                notes: 'Group rate needs ten days notice.', students: whitfields)
+  add_task(one, title: 'Print the reading log for October', done_days_ago: 1,
+                students: [ruth])
+  add_task(one, title: 'Order Eliza a new recorder', due: Date.current + 9,
+                students: [eliza])
+
+  # Theirs to do.
+  add_task(one, title: 'Finish the science fair project', due: Date.current + 4,
+                notes: 'Poster board and the write up, not the experiment itself.',
+                students: [eliza], owned_by: 'student')
+  add_task(one, title: 'Practise the recital piece', due: Date.current + 1,
+                students: [ruth], owned_by: 'student')
+  # Several students on one piece of work.
+  add_task(one, title: 'Tidy the schoolroom shelves', due: Date.current - 1,
+                students: [eliza, samuel, ruth], owned_by: 'student')
+  add_task(one, title: 'Learn the Latin chant for Friday', due: Date.current + 3,
+                students: [eliza, samuel], owned_by: 'student', done_days_ago: nil)
+
+  # Shared: she sits with him for it, so neither of them owns it alone.
+  add_task(one, title: 'Return the library books', due: Date.current - 2,
+                students: [samuel], owned_by: 'both')
+  add_task(one, title: 'Read one chapter a night', students: [samuel], owned_by: 'both')
 
   # 2: a heavy user. Ten students and a dense month, with one day loaded well
   # past the month grid's pill cap and the week column's scroll height.
@@ -408,6 +438,19 @@ ActiveRecord::Base.transaction do
   add_task(two, title: 'Order the winter term curriculum', due: Date.current - 14, done_days_ago: 6)
   add_task(two, title: 'Send term one progress notes to grandparents', done_days_ago: 2)
 
+  # Ten children means the filter has to narrow to one of them, so each of the
+  # older five carries their own work and the younger ones share a chore.
+  aldermans.first(5).each_with_index do |student, index|
+    add_task(two, title: "#{student.first_name}: finish the term project",
+                  due: Date.current + index, students: [student], owned_by: 'student')
+  end
+  add_task(two, title: 'Clear the lunch table between lessons', due: Date.current + 2,
+                students: aldermans.last(4), owned_by: 'student')
+  add_task(two, title: 'Practise reading aloud together', due: Date.current + 5,
+                students: aldermans.first(2), owned_by: 'both')
+  add_task(two, title: 'Chase the missing algebra workbook for Josiah', due: Date.current - 4,
+                students: [aldermans[0]])
+
   # 3: brand new. No students, no events, no subjects: every empty state at once.
   demo_teacher(email: 'teacher3@test.com', first_name: 'Priya', last_name: 'Raghavan')
 
@@ -461,8 +504,10 @@ ActiveRecord::Base.transaction do
 
   add_task(four, title: 'Swap the telescope filters before Thursday', due: Date.current + 3)
   add_task(four, title: 'Renew the observatory membership', due: Date.current - 3)
-  add_task(four, title: 'Label the rock samples')
-  add_task(four, title: 'Order the violin sheet music', done_days_ago: 4)
+  add_task(four, title: 'Label the rock samples', students: [zuri, amara], owned_by: 'student')
+  add_task(four, title: 'Order the violin sheet music', done_days_ago: 4, students: [kene])
+  add_task(four, title: 'Keep the observation log up to date', due: Date.current + 1,
+                 students: [zuri], owned_by: 'both')
 
   # 5: one student, the simplest real case.
   five = demo_teacher(email: 'teacher5@test.com', first_name: 'Grace', last_name: 'Bellweather')
@@ -488,8 +533,10 @@ ActiveRecord::Base.transaction do
   add_assignment(five, subject: five_nature, title: 'Autumn leaf notebook page',
                        due: weekday(10), points: 5, weight: 1, scores: { wren => 5 })
 
-  add_task(five, title: 'Buy a new reading journal', due: Date.current + 4)
+  add_task(five, title: 'Buy a new reading journal', due: Date.current + 4, students: [wren])
   add_task(five, title: 'Ask the library about the phonics programme')
+  add_task(five, title: 'Read the first reader to me', due: Date.current + 2,
+                 students: [wren], owned_by: 'student')
 
   # 6: everything in the past, nothing upcoming.
   six = demo_teacher(email: 'teacher6@test.com', first_name: 'Owen', last_name: 'Castellano')
@@ -521,6 +568,8 @@ ActiveRecord::Base.transaction do
   add_task(six, title: 'File the attendance record for last term', due: Date.current - 30, done_days_ago: 25)
   add_task(six, title: 'Return the borrowed microscope', due: Date.current - 20, done_days_ago: 18)
   add_task(six, title: 'Archive the summer photographs', done_days_ago: 12)
+  add_task(six, title: 'Hand in the summer reading sheet', due: Date.current - 26,
+                done_days_ago: 24, students: castellanos, owned_by: 'student')
 
   # 7: everything ahead, nothing has happened yet.
   seven = demo_teacher(email: 'teacher7@test.com', first_name: 'Beatrice', last_name: 'Nakamura')
@@ -552,6 +601,8 @@ ActiveRecord::Base.transaction do
 
   add_task(seven, title: 'Confirm the co-op registration', due: Date.current + 10)
   add_task(seven, title: 'Order the spring term books', due: Date.current + 21)
+  add_task(seven, title: 'Choose a Japanese name chart', due: Date.current + 14,
+                  students: nakamuras, owned_by: 'student')
 
   # 8: students on the roster, nothing on the calendar, and neither tasks nor
   # subjects: the other teacher whose empty states are worth looking at.
@@ -608,6 +659,9 @@ ActiveRecord::Base.transaction do
                         'rubric in one folder rather than three.')
   add_task(nine, title: 'Reconcile the Pemberton Community Education Centre invoices against ' \
                         'the quarterly enrichment budget')
+  add_task(nine, title: 'Complete the independent research proposal for the marine biology ' \
+                        'field study before the coastal station deadline',
+                 due: Date.current + 5, students: vandersteens.first(2), owned_by: 'student')
 
   # 10: nearly empty. One student, one event, one task.
   ten = demo_teacher(email: 'teacher10@test.com', first_name: 'Miriam', last_name: 'Holt')
@@ -622,18 +676,19 @@ ActiveRecord::Base.transaction do
   add_assignment(ten, subject: ten_readiness, title: 'Name writing practice', due: weekday(2),
                       points: 5, weight: 1, scores: { holt => nil })
 
-  add_task(ten, title: 'Take the first day photo', due: Date.current + 1)
+  add_task(ten, title: 'Take the first day photo', due: Date.current + 1, students: [holt])
 end
 
 puts "Seeded demo teachers, anchored on #{ANCHOR}. Password for all: #{PASSWORD}"
 Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.each do |teacher|
   puts format(
-    '  %-20s %-24s students: %2d (+%d removed)  events: %4d  tasks: %2d (%d open)  ' \
+    '  %-20s %-24s students: %2d (+%d removed)  events: %4d  tasks: %2d (%d open, %d theirs)  ' \
     'subjects: %2d  assignments: %2d  grades: %3d (%d marked)  %s',
     teacher.email, teacher.full_name,
     teacher.students.active.count, teacher.students.where(is_active: false).count,
     teacher.calendar_events.count,
     teacher.tasks.count, teacher.tasks.where(completed_at: nil).count,
+    teacher.tasks.where.not(owned_by: 'teacher').count,
     teacher.subjects.active.count,
     teacher.assignments.count,
     AssignmentGrade.joins(:assignment).where(assignments: { teacher_id: teacher.id }).count,

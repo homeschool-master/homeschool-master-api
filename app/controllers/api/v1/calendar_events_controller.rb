@@ -5,7 +5,7 @@ module Api
     class CalendarEventsController < BaseController
       before_action :set_calendar_event, only: %i[show update destroy]
 
-      # GET /api/v1/calendar_events?start_date=&end_date=&student_id=
+      # GET /api/v1/calendar_events?start_date=&end_date=&student_ids[]=
       def index
         range = parsed_range
         return render_missing_range if range.nil?
@@ -58,9 +58,24 @@ module Api
       # query per event.
       def events_in_range(range)
         events = current_teacher.calendar_events.includes(:students).in_range(*range).chronological
-        return events if params[:student_id].blank?
+        student_ids = filter_student_ids
+        return events if student_ids.empty?
 
-        events.for_student(params[:student_id])
+        events.for_students(student_ids)
+      end
+
+      # student_ids[] is the array form, matching the name create and update
+      # already use for the same idea. student_id stays as the one id
+      # shorthand rather than becoming a second vocabulary for it.
+      #
+      # An id belonging to another teacher is not rejected here the way it is
+      # on a write: the query is already scoped to this teacher's own events,
+      # so such an id matches nothing, and no events of yours attended by
+      # someone else's student is the honest answer rather than a dropped
+      # filter.
+      def filter_student_ids
+        submitted = params.key?(:student_ids) ? Array(params.permit(student_ids: [])[:student_ids]) : []
+        (submitted + [params[:student_id]]).compact_blank.uniq
       end
 
       def set_calendar_event
@@ -126,40 +141,15 @@ module Api
         event.students.reload
       end
 
+      # Parsing the window is its own idea and lives in CalendarRange: how a
+      # bare date becomes a pair of instants has nothing to do with handling a
+      # request.
       def parsed_range
-        range_start = parse_boundary(params[:start_date], :beginning_of_day)
-        range_end = parse_boundary(params[:end_date], :end_of_day)
-        return nil if range_start.nil? || range_end.nil?
-
-        [range_start, range_end]
-      end
-
-      # A bare date names one of the teacher's local days, so it widens to that
-      # day's bounds in their zone. A value that already carries a time is an
-      # instant the client chose: it is used as sent, with an explicit offset
-      # honored rather than reinterpreted. Either way the result converts back
-      # to UTC for the query.
-      def parse_boundary(value, edge)
-        return nil if value.blank?
-
-        raw = value.to_s
-        raw.match?(/[T ]\d/) ? parse_instant(raw) : parse_local_day(raw, edge)
-      end
-
-      def parse_instant(raw)
-        Time.zone.parse(raw)
-      rescue ArgumentError
-        nil
-      end
-
-      def parse_local_day(raw, edge)
-        teacher_zone.parse(raw)&.public_send(edge)
-      rescue ArgumentError
-        nil
-      end
-
-      def teacher_zone
-        ActiveSupport::TimeZone[current_teacher.effective_time_zone] || Time.zone
+        CalendarRange.call(
+          start_date: params[:start_date],
+          end_date: params[:end_date],
+          time_zone: current_teacher.effective_time_zone
+        )
       end
     end
   end

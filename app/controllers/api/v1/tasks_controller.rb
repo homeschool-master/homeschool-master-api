@@ -27,25 +27,33 @@ module Api
 
       # POST /api/v1/tasks
       def create
-        task = current_teacher.tasks.build(task_params)
+        student_ids = submitted_student_ids
+        return render_unowned_students if student_ids && !students_owned?(student_ids)
 
-        if task.save
-          render_created(TaskSerializer.render(task))
-        else
-          render_validation_errors(task)
-        end
+        task = current_teacher.tasks.build(task_params)
+        task.students = students_for(student_ids) unless student_ids.nil?
+        return render_validation_errors(task) unless task.valid?
+
+        task.save!
+        render_created(TaskSerializer.render(task))
       end
 
       # PATCH /api/v1/tasks/:id
       # Ticking and unticking are both plain updates: completed is a writer on
       # the model that sets or clears the timestamp, so a checkbox needs one
       # endpoint rather than a complete and an uncomplete.
+      #
+      # A submitted student array replaces the existing set outright, the same
+      # as event attendees. Taking the last student off a task that is a
+      # student's is refused by the model rather than quietly making it the
+      # teacher's, so the assignment happens before validity is checked.
       def update
-        if @task.update(task_params)
-          render_success(TaskSerializer.render(@task))
-        else
-          render_validation_errors(@task)
-        end
+        student_ids = submitted_student_ids
+        return render_unowned_students if student_ids && !students_owned?(student_ids)
+
+        return render_validation_errors(@task) unless apply_update(student_ids)
+
+        render_success(TaskSerializer.render(@task))
       end
 
       # DELETE /api/v1/tasks/:id
@@ -57,6 +65,22 @@ module Api
       end
 
       private
+
+      # Assigning a collection on a record that already exists writes the join
+      # rows there and then, before anything has been validated. Without the
+      # transaction, refusing to take the last student off a task that is a
+      # student's would return the refusal having already deleted the row it
+      # was refusing to delete.
+      def apply_update(student_ids)
+        @task.transaction do
+          @task.assign_attributes(task_params)
+          @task.students = students_for(student_ids) unless student_ids.nil?
+          raise ActiveRecord::Rollback unless @task.valid?
+
+          @task.save!
+          true
+        end
+      end
 
       def filtered_tasks
         tasks = current_teacher.tasks.by_due_date
@@ -110,7 +134,43 @@ module Api
       # completed is not a column: it is the model writer that sets or clears
       # completed_at, which is why completed_at itself is not accepted here.
       def task_params
-        params.permit(:title, :description, :due_date, :completed)
+        params.permit(:title, :description, :due_date, :completed, :owned_by)
+      end
+
+      # nil means the client did not submit students at all, so the existing
+      # set is left alone. An empty array clears it, which the model then
+      # refuses on a task that is a student's.
+      def submitted_student_ids
+        return nil unless params.key?(:student_ids)
+
+        Array(params.permit(student_ids: [])[:student_ids]).uniq
+      end
+
+      # Loaded through the teacher, so an id belonging to someone else cannot
+      # arrive here even if the check above were ever bypassed.
+      def students_for(student_ids)
+        return [] if student_ids.empty?
+
+        current_teacher.students.where(id: student_ids).to_a
+      end
+
+      # The same rule event attendees have: one id belonging to another teacher
+      # rejects the whole request rather than being dropped from it, because a
+      # task quietly saved without the student it named is worse than one that
+      # was refused.
+      def students_owned?(student_ids)
+        return true if student_ids.empty?
+
+        current_teacher.students.where(id: student_ids).count == student_ids.size
+      end
+
+      def render_unowned_students
+        render_error(
+          'Validation failed',
+          code: 'VALIDATION_ERROR',
+          status: :unprocessable_entity,
+          details: { student_ids: ['must all belong to the current teacher'] }
+        )
       end
     end
   end

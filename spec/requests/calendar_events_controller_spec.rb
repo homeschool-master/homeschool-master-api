@@ -90,6 +90,63 @@ RSpec.describe 'Api::V1::CalendarEvents', type: :request do
         expect(json_data.map { |e| e['title'] }).to eq(['Mine'])
       end
 
+      it 'filters by several student_ids, meaning any of them' do
+        eliza = FactoryBot.create(:student, teacher: @teacher, first_name: 'Eliza')
+        samuel = FactoryBot.create(:student, teacher: @teacher, first_name: 'Samuel')
+        ruth = FactoryBot.create(:student, teacher: @teacher, first_name: 'Ruth')
+        elizas = FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Elizas', **event_times(day: 15))
+        samuels = FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Samuels', **event_times(day: 16))
+        ruths = FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Ruths', **event_times(day: 17))
+        FactoryBot.create(:event_attendee, calendar_event: elizas, student: eliza)
+        FactoryBot.create(:event_attendee, calendar_event: samuels, student: samuel)
+        FactoryBot.create(:event_attendee, calendar_event: ruths, student: ruth)
+
+        get api_v1_calendar_events_url, params: week.merge(student_ids: [eliza.id, samuel.id])
+
+        expect(json_data.map { |e| e['title'] }).to contain_exactly('Elizas', 'Samuels')
+      end
+
+      it 'returns an event two selected students share only once' do
+        eliza = FactoryBot.create(:student, teacher: @teacher, first_name: 'Eliza')
+        samuel = FactoryBot.create(:student, teacher: @teacher, first_name: 'Samuel')
+        shared = FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Shared', **event_times(day: 15))
+        FactoryBot.create(:event_attendee, calendar_event: shared, student: eliza)
+        FactoryBot.create(:event_attendee, calendar_event: shared, student: samuel)
+
+        get api_v1_calendar_events_url, params: week.merge(student_ids: [eliza.id, samuel.id])
+
+        expect(json_data.map { |e| e['title'] }).to eq(['Shared'])
+      end
+
+      it 'still accepts the single student_id form' do
+        student = FactoryBot.create(:student, teacher: @teacher)
+        mine = FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Mine', **event_times(day: 15))
+        FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Theirs', **event_times(day: 16))
+        FactoryBot.create(:event_attendee, calendar_event: mine, student: student)
+
+        get api_v1_calendar_events_url, params: week.merge(student_id: student.id)
+
+        expect(json_data.map { |e| e['title'] }).to eq(['Mine'])
+      end
+
+      it 'treats an empty student_ids array as no filter at all' do
+        FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Unattended', **event_times(day: 15))
+
+        get api_v1_calendar_events_url, params: week.merge(student_ids: [])
+
+        expect(json_data.map { |e| e['title'] }).to eq(['Unattended'])
+      end
+
+      it 'returns nothing for another teacher\'s student rather than ignoring the filter' do
+        other_teacher = FactoryBot.create(:teacher, email: 'other@test.com')
+        theirs = FactoryBot.create(:student, teacher: other_teacher)
+        FactoryBot.create(:calendar_event, teacher: @teacher, title: 'Mine', **event_times(day: 15))
+
+        get api_v1_calendar_events_url, params: week.merge(student_ids: [theirs.id])
+
+        expect(json_data).to eq([])
+      end
+
       it 'includes the attendee ids on each event' do
         student = FactoryBot.create(:student, teacher: @teacher, first_name: 'Emma')
         event = FactoryBot.create(:calendar_event, teacher: @teacher, **event_times(day: 15))

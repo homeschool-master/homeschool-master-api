@@ -136,4 +136,107 @@ RSpec.describe Task, type: :model do
       expect(ordered.index(first.title)).to be < ordered.index(second.title)
     end
   end
+
+  describe 'students and ownership' do
+    let(:teacher) { FactoryBot.create(:teacher) }
+    let(:student) { FactoryBot.create(:student, teacher: teacher) }
+
+    it 'defaults to the teacher\'s own' do
+      expect(FactoryBot.create(:task, teacher: teacher).owned_by).to eq('teacher')
+    end
+
+    it 'rejects an owner outside the three it knows' do
+      task = FactoryBot.build(:task, teacher: teacher, owned_by: 'nobody')
+      expect(task).not_to be_valid
+      expect(task.errors[:owned_by]).to be_present
+    end
+
+    it 'lets a teacher owned task name students' do
+      task = FactoryBot.build(:task, teacher: teacher, owned_by: 'teacher', students: [student])
+      expect(task).to be_valid
+    end
+
+    it 'lets a teacher owned task name nobody' do
+      expect(FactoryBot.build(:task, teacher: teacher, owned_by: 'teacher')).to be_valid
+    end
+
+    # A task that is a student's has to say whose: an owner that names nobody
+    # records something that does not exist.
+    it 'refuses a student owned task that names nobody' do
+      task = FactoryBot.build(:task, teacher: teacher, owned_by: 'student')
+      expect(task).not_to be_valid
+      expect(task.errors[:student_ids]).to be_present
+    end
+
+    it 'refuses a shared task that names nobody' do
+      task = FactoryBot.build(:task, teacher: teacher, owned_by: 'both')
+      expect(task).not_to be_valid
+    end
+
+    it 'accepts a student owned task that names one' do
+      expect(FactoryBot.build(:task, teacher: teacher, owned_by: 'student', students: [student])).to be_valid
+    end
+
+    it 'refuses to have the last student taken off a student owned task' do
+      task = FactoryBot.create(:task, teacher: teacher, owned_by: 'student', students: [student])
+      task.students = []
+      expect(task).not_to be_valid
+    end
+
+    it 'allows the last student off once the task is the teacher\'s again' do
+      task = FactoryBot.create(:task, teacher: teacher, owned_by: 'student', students: [student])
+      task.assign_attributes(owned_by: 'teacher')
+      task.students = []
+      expect(task).to be_valid
+    end
+
+    it 'reports whether a student is on the hook' do
+      expect(FactoryBot.build(:task, owned_by: 'teacher')).not_to be_student_owned
+      expect(FactoryBot.build(:task, owned_by: 'student')).to be_student_owned
+      expect(FactoryBot.build(:task, owned_by: 'both')).to be_student_owned
+    end
+  end
+
+  describe 'student scopes' do
+    let(:teacher) { FactoryBot.create(:teacher) }
+
+    it 'for_students returns tasks any of them are on' do
+      eliza = FactoryBot.create(:student, teacher: teacher, first_name: 'Eliza')
+      samuel = FactoryBot.create(:student, teacher: teacher, first_name: 'Samuel')
+      ruth = FactoryBot.create(:student, teacher: teacher, first_name: 'Ruth')
+      elizas = FactoryBot.create(:task, teacher: teacher, title: 'Elizas', students: [eliza])
+      samuels = FactoryBot.create(:task, teacher: teacher, title: 'Samuels', students: [samuel])
+      FactoryBot.create(:task, teacher: teacher, title: 'Ruths', students: [ruth])
+
+      expect(teacher.tasks.for_students([eliza.id, samuel.id])).to contain_exactly(elizas, samuels)
+    end
+
+    it 'for_students returns a shared task once' do
+      eliza = FactoryBot.create(:student, teacher: teacher, first_name: 'Eliza')
+      samuel = FactoryBot.create(:student, teacher: teacher, first_name: 'Samuel')
+      shared = FactoryBot.create(:task, teacher: teacher, students: [eliza, samuel])
+
+      expect(teacher.tasks.for_students([eliza.id, samuel.id])).to eq([shared])
+    end
+
+    # The two ownership scopes answer whose job it is, which is a different
+    # question from who the task names.
+    it 'owned_by_teacher includes shared work but not a student\'s own' do
+      student = FactoryBot.create(:student, teacher: teacher)
+      mine = FactoryBot.create(:task, teacher: teacher, owned_by: 'teacher')
+      shared = FactoryBot.create(:task, teacher: teacher, owned_by: 'both', students: [student])
+      FactoryBot.create(:task, teacher: teacher, owned_by: 'student', students: [student])
+
+      expect(teacher.tasks.owned_by_teacher).to contain_exactly(mine, shared)
+    end
+
+    it 'owned_by_student includes shared work but not the teacher\'s own' do
+      student = FactoryBot.create(:student, teacher: teacher)
+      FactoryBot.create(:task, teacher: teacher, owned_by: 'teacher')
+      shared = FactoryBot.create(:task, teacher: teacher, owned_by: 'both', students: [student])
+      theirs = FactoryBot.create(:task, teacher: teacher, owned_by: 'student', students: [student])
+
+      expect(teacher.tasks.owned_by_student).to contain_exactly(shared, theirs)
+    end
+  end
 end

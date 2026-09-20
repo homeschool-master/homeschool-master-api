@@ -4,14 +4,35 @@ class Task < ApplicationRecord
   # Callbacks
   before_save :nullify_blank_description
 
+  # Whose job the task is. Naming students cannot express this on its own:
+  # "Export report cards" names Scarlett and is the teacher's work, while
+  # "Finish the science fair project" names her and is hers. Stored as one
+  # column rather than two booleans, because the three states are exclusive and
+  # a pair of flags can hold a fourth that means nothing: neither.
+  OWNERS = %w[teacher student both].freeze
+
   # Associations
   belongs_to :teacher
 
+  has_many :task_students, dependent: :destroy
+  has_many :students, through: :task_students
+
   # Validations
   validates :title, presence: true, length: { maximum: 255 }
+  validates :owned_by, inclusion: { in: OWNERS }
+  validate :student_owned_task_names_a_student
 
   # Scopes
   scope :open, -> { where(completed_at: nil) }
+  # Any of them, not all of them: a task shared by two children is one of
+  # each child's tasks rather than only of the pair's.
+  scope :for_students, lambda { |student_ids|
+    joins(:task_students).where(task_students: { student_id: student_ids }).distinct
+  }
+  # The two halves of ownership, each a question about whose job it is rather
+  # than about who the task concerns.
+  scope :owned_by_teacher, -> { where(owned_by: %w[teacher both]) }
+  scope :owned_by_student, -> { where(owned_by: %w[student both]) }
   scope :completed, -> { where.not(completed_at: nil) }
   # Inclusive: a task due on the boundary day is due by it. Undated tasks are
   # not due by any date, so they are left out rather than swept in.
@@ -50,7 +71,28 @@ class Task < ApplicationRecord
     end
   end
 
+  # True when a student is on the hook for this, which is a different question
+  # from whether the task names one.
+  def student_owned?
+    owned_by != 'teacher'
+  end
+
   private
+
+  # A task that is a student's has to say whose. "Finish the science fair
+  # project", owned by a student and naming none, records an owner that does
+  # not exist, and it would silently drop out of every student's list while
+  # still claiming not to be the teacher's.
+  #
+  # Removing the last student from such a task is refused rather than quietly
+  # turning it back into the teacher's own: which of the two a teacher meant is
+  # not something this can know, and guessing changes what the task says.
+  def student_owned_task_names_a_student
+    return unless student_owned?
+    return if students.any? || task_students.any?
+
+    errors.add(:student_ids, 'must name at least one student when the task is a student\'s')
+  end
 
   def nullify_blank_description
     self.description = nil if description.blank?
