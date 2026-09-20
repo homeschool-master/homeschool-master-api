@@ -92,6 +92,10 @@ def demo_teacher(email:, first_name:, last_name:, time_zone: Teacher::DEFAULT_TI
   teacher.save!
 
   teacher.calendar_events.destroy_all
+  # Before the subjects and students they hang off: destroying a subject takes
+  # its assignments with it either way, but doing it in this order keeps the
+  # rebuild readable rather than relying on the cascade.
+  teacher.assignments.destroy_all
   teacher.students.destroy_all
   teacher.tasks.destroy_all
   teacher.subjects.destroy_all
@@ -129,6 +133,27 @@ def add_task(teacher, title:, due: nil, notes: nil, done_days_ago: nil)
     due_date: due,
     completed_at: done_days_ago && (Date.current - done_days_ago).to_time
   )
+end
+
+# scores maps a student to what they earned. nil is work the student holds but
+# that has not been marked yet, which stays out of every average; 0 is a real
+# zero that counts against one. A student left out of the hash is not given the
+# work at all, and an empty hash is an assignment set but not yet handed out.
+#
+# weight is how much the work counts next to other work in the same subject: 1
+# is ordinary, 2 counts double, 0 keeps it off the average altogether.
+def add_assignment(teacher, subject:, title:, due: nil, points: 100, weight: 1, notes: nil,
+                   scores: {})
+  assignment = teacher.assignments.create!(
+    subject: subject, title: title, description: notes,
+    due_date: due, points_possible: points, weight: weight
+  )
+
+  scores.each do |student, earned|
+    assignment.assignment_grades.create!(student: student, points_earned: earned)
+  end
+
+  assignment
 end
 
 # hour is [hour, minute] in the teacher's zone, or nil for an all day event.
@@ -210,14 +235,66 @@ ActiveRecord::Base.transaction do
                  notes: 'Naomi is accompanying her sister.')
 
   # A full classical spread, one colour each from the shared palette.
-  add_subject(one, 'Math', 0, 'Arithmetic, algebra and problem solving')
-  add_subject(one, 'Language Arts', 4, 'Reading, spelling, grammar and composition')
-  add_subject(one, 'Science', 2, 'Nature study, biology and the scientific method')
-  add_subject(one, 'History', 9, 'Ancients through to the modern era')
-  add_subject(one, 'Latin', 5)
-  add_subject(one, 'Art', 6, 'Drawing, painting and picture study')
-  add_subject(one, 'Music', 3)
-  add_subject(one, 'Bible', 11, 'Memory work and family study')
+  one_math = add_subject(one, 'Math', 0, 'Arithmetic, algebra and problem solving')
+  one_english = add_subject(one, 'Language Arts', 4, 'Reading, spelling, grammar and composition')
+  one_science = add_subject(one, 'Science', 2, 'Nature study, biology and the scientific method')
+  one_history = add_subject(one, 'History', 9, 'Ancients through to the modern era')
+  one_latin = add_subject(one, 'Latin', 5)
+  one_art = add_subject(one, 'Art', 6, 'Drawing, painting and picture study')
+  one_music = add_subject(one, 'Music', 3)
+  one_bible = add_subject(one, 'Bible', 11, 'Memory work and family study')
+
+  # Her mark book, and the reference set for the grades UI: every state it has
+  # to draw is here. Eliza and Samuel carry most of the work, Ruth has the
+  # three pieces a kindergartener gets, and Isaac has none at all, which is
+  # what a progress report with nothing in it looks like.
+  eliza, samuel, ruth = whitfields
+
+  # Fully marked, ordinary weight: the plain case.
+  add_assignment(one, subject: one_math, title: 'Chapter 4 problems', due: weekday(2),
+                      points: 20, weight: 1, notes: 'Odd numbered questions only.',
+                      scores: { eliza => 18, samuel => 15 })
+  # Half weight: a quick check that should not count like a test.
+  add_assignment(one, subject: one_math, title: 'Times tables check', due: weekday(6),
+                      points: 10, weight: 0.5, scores: { eliza => 10, samuel => 7 })
+  # Triple weight, and part marked: the figure a teacher most needs the counts
+  # beside, since the heaviest piece is the one still outstanding.
+  add_assignment(one, subject: one_math, title: 'Unit 2 test', due: weekday(12),
+                      points: 50, weight: 3, scores: { eliza => 44, samuel => nil })
+
+  add_assignment(one, subject: one_english, title: 'Spelling list 3', due: weekday(3),
+                      points: 15, weight: 1, scores: { eliza => 15, samuel => 12, ruth => 9 })
+  add_assignment(one, subject: one_english, title: "Narration: Pilgrim's Progress",
+                      due: weekday(9), points: 10, weight: 2,
+                      notes: 'Told back in her own words, written down for her.',
+                      scores: { eliza => 9, samuel => nil })
+  # Zero weight: handed out and marked, deliberately kept off the average.
+  add_assignment(one, subject: one_english, title: 'Copywork week 2', due: weekday(14),
+                      points: 5, weight: 0, notes: 'Practice only, not counted.',
+                      scores: { eliza => 5, samuel => 4, ruth => 3 })
+
+  # An explicit zero next to a real mark: the pair that has to read differently
+  # from an unmarked box.
+  add_assignment(one, subject: one_science, title: 'Nature journal entry', due: weekday(5),
+                      points: 10, weight: 1, scores: { eliza => 8, samuel => 0 })
+  # Nothing marked at all: set, handed out, and still waiting.
+  add_assignment(one, subject: one_science, title: 'Leaf classification lab', due: weekday(11),
+                      points: 25, weight: 2, scores: { eliza => nil, samuel => nil })
+
+  add_assignment(one, subject: one_history, title: 'Ancient Egypt timeline', due: weekday(8),
+                      points: 30, weight: 2, scores: { eliza => 27, samuel => 21 })
+  add_assignment(one, subject: one_latin, title: 'First declension quiz', due: weekday(4),
+                      points: 20, weight: 1, scores: { eliza => 16 })
+  add_assignment(one, subject: one_art, title: 'Picture study: sunflowers', due: weekday(16),
+                      points: 10, weight: 0, scores: { ruth => nil })
+
+  # No due date: work that belongs to no report period, so it shows on the list
+  # and in no progress figure.
+  add_assignment(one, subject: one_bible, title: 'Memory work: Psalm 23',
+                      points: 5, weight: 1, scores: { eliza => 5, samuel => 5, ruth => 5 })
+  # Set but given to nobody yet: the row that has no marking to report.
+  add_assignment(one, subject: one_music, title: 'Recital piece rehearsal log',
+                      due: weekday(18), points: 10, weight: 1)
 
   # Her to-do list, covering every state the tasks UI has to draw: two already
   # late, one due today, two coming up, one with no date at all, and two ticked
@@ -276,9 +353,46 @@ ActiveRecord::Base.transaction do
 
   # Ten students across a dozen subjects, including the specialist ones a
   # bigger family splits out.
-  ['Math', 'Language Arts', 'Science', 'History', 'Geography', 'Latin', 'Logic',
-   'Art', 'Music Theory', 'Physical Education', 'Typing', 'Home Economics']
-    .each_with_index { |name, index| add_subject(two, name, index) }
+  two_subjects =
+    ['Math', 'Language Arts', 'Science', 'History', 'Geography', 'Latin', 'Logic',
+     'Art', 'Music Theory', 'Physical Education', 'Typing', 'Home Economics']
+    .each_with_index.map { |name, index| add_subject(two, name, index) }
+
+  # A mark book at the scale that makes the filters earn their place: eighteen
+  # pieces across a dozen subjects, most of the roster on each. The marking
+  # runs from fully done on the oldest work to untouched on the newest, which
+  # is what a term looks like part way through.
+  18.times do |index|
+    subject = two_subjects[index % two_subjects.length]
+    holders = aldermans.rotate(index).first(3 + (index % 4))
+    possible = [10, 20, 25, 50, 100][index % 5]
+
+    # Older work is marked, the middle is part marked, the newest is not
+    # touched yet. Every fourth student in a part marked batch is left unmarked
+    # rather than the same one each time.
+    scores = holders.each_with_index.to_h do |student, slot|
+      earned =
+        if index < 7 then possible - ((index + slot) % 5)
+        elsif index < 13 then (slot % 4 == 3 ? nil : possible - ((index + slot) % 7))
+        end
+
+      [student, earned]
+    end
+
+    add_assignment(
+      two, subject: subject, title: "#{subject.name}: unit #{(index / 3) + 1} work",
+      due: weekday(index), points: possible,
+      weight: [1, 1, 2, 0.5, 3, 1][index % 6], scores: scores
+    )
+  end
+
+  # One zero weight piece and one nobody has been given yet, so the states the
+  # smaller families show are reachable on the busy account too.
+  add_assignment(two, subject: two_subjects[7], title: 'Sketchbook practice pages',
+                      due: weekday(5), points: 10, weight: 0,
+                      scores: aldermans.first(4).to_h { |student| [student, 9] })
+  add_assignment(two, subject: two_subjects[6], title: 'Logic: term paper', due: weekday(20),
+                      points: 100, weight: 3)
 
   # A long list, so the dashboard panel has more open work than it shows and
   # the See More link has somewhere to go.
@@ -325,10 +439,25 @@ ActiveRecord::Base.transaction do
                     location: 'Kitchen table')
   end
 
-  add_subject(four, 'Astronomy', 4, 'Backyard observation and the night sky')
-  add_subject(four, 'Biology', 2)
-  add_subject(four, 'Literature', 5, 'Read alouds and the evening chapter book')
+  four_astronomy = add_subject(four, 'Astronomy', 4, 'Backyard observation and the night sky')
+  four_biology = add_subject(four, 'Biology', 2)
+  four_literature = add_subject(four, 'Literature', 5, 'Read alouds and the evening chapter book')
   add_subject(four, 'Violin', 6)
+
+  # An evening school's mark book: small, mostly marked, one piece still open.
+  zuri, amara, kene = okafors
+
+  add_assignment(four, subject: four_astronomy, title: 'Moon phase observation log',
+                       due: weekday(3), points: 20, weight: 2,
+                       notes: 'One sketch a night for two weeks.',
+                       scores: { zuri => 19, amara => 17, kene => 12 })
+  add_assignment(four, subject: four_astronomy, title: 'Constellation quiz', due: weekday(9),
+                       points: 15, weight: 1, scores: { zuri => 14, amara => nil })
+  add_assignment(four, subject: four_biology, title: 'Cell diagram labelling', due: weekday(6),
+                       points: 25, weight: 1, scores: { zuri => 22, amara => 25, kene => 0 })
+  add_assignment(four, subject: four_literature, title: 'Chapter book response',
+                       due: weekday(12), points: 10, weight: 0.5,
+                       scores: { zuri => nil, amara => nil, kene => nil })
 
   add_task(four, title: 'Swap the telescope filters before Thursday', due: Date.current + 3)
   add_task(four, title: 'Renew the observatory membership', due: Date.current - 3)
@@ -344,9 +473,20 @@ ActiveRecord::Base.transaction do
                     notes: NOTES[index % NOTES.length])
   end
 
-  add_subject(five, 'Phonics', 0)
-  add_subject(five, 'Math', 4)
-  add_subject(five, 'Nature Study', 2, 'Weekly walk and a notebook page')
+  five_phonics = add_subject(five, 'Phonics', 0)
+  five_math = add_subject(five, 'Math', 4)
+  five_nature = add_subject(five, 'Nature Study', 2, 'Weekly walk and a notebook page')
+
+  # One student, everything marked: the report that is simply complete, and the
+  # one to read a hand calculation against.
+  add_assignment(five, subject: five_phonics, title: 'Short vowel sounds', due: weekday(2),
+                       points: 10, weight: 1, scores: { wren => 9 })
+  add_assignment(five, subject: five_phonics, title: 'Blending practice', due: weekday(7),
+                       points: 10, weight: 1, scores: { wren => 8 })
+  add_assignment(five, subject: five_math, title: 'Counting to one hundred', due: weekday(4),
+                       points: 20, weight: 2, scores: { wren => 18 })
+  add_assignment(five, subject: five_nature, title: 'Autumn leaf notebook page',
+                       due: weekday(10), points: 5, weight: 1, scores: { wren => 5 })
 
   add_task(five, title: 'Buy a new reading journal', due: Date.current + 4)
   add_task(five, title: 'Ask the library about the phonics programme')
@@ -363,8 +503,18 @@ ActiveRecord::Base.transaction do
                    location: 'Home classroom')
   end
 
-  add_subject(six, 'Math', 0)
-  add_subject(six, 'Reading', 4)
+  six_math = add_subject(six, 'Math', 0)
+  six_reading = add_subject(six, 'Reading', 4)
+
+  # Finished work, two months back with the rest of his year. A progress report
+  # opened on its default period finds nothing, which is the honest answer for
+  # an account whose work all predates it: widening the From date brings it back.
+  add_assignment(six, subject: six_math, title: 'End of term arithmetic test',
+                      due: (ANCHOR - 2.months) + 4.days, points: 50, weight: 3,
+                      scores: { castellanos[0] => 41, castellanos[1] => 46 })
+  add_assignment(six, subject: six_reading, title: 'Summer reading list narration',
+                      due: (ANCHOR - 2.months) + 11.days, points: 20, weight: 1,
+                      scores: { castellanos[0] => 17, castellanos[1] => 20 })
 
   # Nothing outstanding: the list exists but every item is ticked, which is a
   # different empty panel from having no tasks at all.
@@ -384,9 +534,21 @@ ActiveRecord::Base.transaction do
                      hour: [13, 0], minutes: 60, students: nakamuras.sample(1), location: location)
   end
 
-  add_subject(seven, 'Math', 0)
-  add_subject(seven, 'Science', 2)
-  add_subject(seven, 'Japanese', 5, 'Hiragana first, then basic conversation')
+  seven_math = add_subject(seven, 'Math', 0)
+  seven_science = add_subject(seven, 'Science', 2)
+  seven_japanese = add_subject(seven, 'Japanese', 5, 'Hiragana first, then basic conversation')
+
+  # Set for next month and not marked, because none of it has happened yet.
+  # Every row on her list reads "0 of 2 marked", which is the state the
+  # Needs marking filter exists for.
+  [[seven_math, 'Place value worksheet', 20, 1], [seven_science, 'Weather chart', 15, 2],
+   [seven_japanese, 'Hiragana set one', 25, 1], [seven_japanese, 'Greetings dialogue', 10, 0.5]]
+    .each_with_index do |(subject, title, points, weight), index|
+      add_assignment(seven, subject: subject, title: title,
+                            due: (ANCHOR + 1.month) + (index * 3).days,
+                            points: points, weight: weight,
+                            scores: nakamuras.to_h { |student| [student, nil] })
+    end
 
   add_task(seven, title: 'Confirm the co-op registration', due: Date.current + 10)
   add_task(seven, title: 'Order the spring term books', due: Date.current + 21)
@@ -419,9 +581,25 @@ ActiveRecord::Base.transaction do
                     location: 'Pemberton Community Education Center, east wing')
   end
 
-  add_subject(nine, 'Advanced Placement European History', 9,
-              'Seminar format, with the co-op discussion group on alternate weeks')
-  add_subject(nine, 'Intermediate Conversational Spanish', 2)
+  nine_history = add_subject(nine, 'Advanced Placement European History', 9,
+                             'Seminar format, with the co-op discussion group on alternate weeks')
+  nine_spanish = add_subject(nine, 'Intermediate Conversational Spanish', 2)
+
+  # Long titles against long student names, for the wrapping on the row and in
+  # the score panel.
+  add_assignment(nine, subject: nine_history,
+                       title: 'Comparative analysis of the Congress of Vienna and the ' \
+                              'settlement at Westphalia',
+                       due: weekday(4), points: 100, weight: 3,
+                       notes: 'Twelve hundred words, with the seminar reading list cited in ' \
+                              'full at the end.',
+                       scores: { vandersteens[0] => 88, vandersteens[1] => 91,
+                                 vandersteens[2] => nil })
+  add_assignment(nine, subject: nine_spanish,
+                       title: 'Sustained conversational assessment with the co-op tutoring ' \
+                              'circle',
+                       due: weekday(11), points: 40, weight: 2,
+                       scores: { vandersteens[1] => 34, vandersteens[2] => 0 })
 
   add_task(nine, title: 'Coordinate the interdisciplinary humanities portfolio review with the ' \
                         'co-op assessment panel before the end of the term',
@@ -437,7 +615,12 @@ ActiveRecord::Base.transaction do
   add_event(ten, title: 'First day of school', date: weekday(1), hour: [9, 0], minutes: 60,
                  students: [holt], location: 'Kitchen table',
                  notes: 'Take the front porch photo before we start.')
-  add_subject(ten, 'Kindergarten Readiness', 6, 'Letters, numbers and lots of reading')
+  ten_readiness = add_subject(ten, 'Kindergarten Readiness', 6,
+                              'Letters, numbers and lots of reading')
+
+  # One piece of work, not yet marked: the smallest mark book there is.
+  add_assignment(ten, subject: ten_readiness, title: 'Name writing practice', due: weekday(2),
+                      points: 5, weight: 1, scores: { holt => nil })
 
   add_task(ten, title: 'Take the first day photo', due: Date.current + 1)
 end
@@ -445,12 +628,18 @@ end
 puts "Seeded demo teachers, anchored on #{ANCHOR}. Password for all: #{PASSWORD}"
 Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.each do |teacher|
   puts format(
-    '  %-20s %-24s students: %2d (+%d removed)  events: %4d  tasks: %2d (%d open)  subjects: %2d  %s',
+    '  %-20s %-24s students: %2d (+%d removed)  events: %4d  tasks: %2d (%d open)  ' \
+    'subjects: %2d  assignments: %2d  grades: %3d (%d marked)  %s',
     teacher.email, teacher.full_name,
     teacher.students.active.count, teacher.students.where(is_active: false).count,
     teacher.calendar_events.count,
     teacher.tasks.count, teacher.tasks.where(completed_at: nil).count,
     teacher.subjects.active.count,
+    teacher.assignments.count,
+    AssignmentGrade.joins(:assignment).where(assignments: { teacher_id: teacher.id }).count,
+    AssignmentGrade.joins(:assignment)
+                   .where(assignments: { teacher_id: teacher.id })
+                   .where.not(points_earned: nil).count,
     teacher.effective_time_zone
   )
 end
