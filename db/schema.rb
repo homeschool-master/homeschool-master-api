@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_18_160100) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_20_120100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -110,6 +110,16 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_160100) do
     t.index ["teacher_id"], name: "index_subjects_on_teacher_id"
   end
 
+  create_table "task_students", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "task_id", null: false
+    t.uuid "student_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["student_id"], name: "index_task_students_on_student_id"
+    t.index ["task_id", "student_id"], name: "index_task_students_on_task_id_and_student_id", unique: true
+    t.index ["task_id"], name: "index_task_students_on_task_id"
+  end
+
   create_table "tasks", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "teacher_id", null: false
     t.string "title", null: false
@@ -118,8 +128,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_160100) do
     t.datetime "completed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "owned_by", default: "teacher", null: false
     t.index ["completed_at"], name: "index_tasks_on_completed_at"
     t.index ["teacher_id", "due_date"], name: "index_tasks_on_teacher_id_and_due_date"
+    t.index ["teacher_id", "owned_by"], name: "index_tasks_on_teacher_id_and_owned_by"
     t.index ["teacher_id"], name: "index_tasks_on_teacher_id"
   end
 
@@ -165,5 +177,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_160100) do
   add_foreign_key "refresh_tokens", "teachers"
   add_foreign_key "students", "teachers"
   add_foreign_key "subjects", "teachers"
+  add_foreign_key "task_students", "students", on_delete: :cascade
+  add_foreign_key "task_students", "tasks", on_delete: :cascade
   add_foreign_key "tasks", "teachers"
 end

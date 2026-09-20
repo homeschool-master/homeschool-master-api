@@ -158,16 +158,44 @@ RSpec.describe CalendarEvent, type: :model do
     end
   end
 
-  describe '.for_student' do
+  describe '.for_students' do
     it 'returns only events the student attends' do
       teacher = FactoryBot.create(:teacher)
       student = FactoryBot.create(:student, teacher: teacher)
       attended = FactoryBot.create(:calendar_event, teacher: teacher)
       unattended = FactoryBot.create(:calendar_event, teacher: teacher)
       FactoryBot.create(:event_attendee, calendar_event: attended, student: student)
-      results = described_class.for_student(student.id)
+      results = described_class.for_students([student.id])
       expect(results).to eq([attended])
       expect(results).not_to include(unattended)
+    end
+
+    it 'returns events any of the students attend rather than only shared ones' do
+      teacher = FactoryBot.create(:teacher)
+      first = FactoryBot.create(:student, teacher: teacher)
+      second = FactoryBot.create(:student, teacher: teacher)
+      third = FactoryBot.create(:student, teacher: teacher)
+      firsts = FactoryBot.create(:calendar_event, teacher: teacher)
+      seconds = FactoryBot.create(:calendar_event, teacher: teacher)
+      thirds = FactoryBot.create(:calendar_event, teacher: teacher)
+      FactoryBot.create(:event_attendee, calendar_event: firsts, student: first)
+      FactoryBot.create(:event_attendee, calendar_event: seconds, student: second)
+      FactoryBot.create(:event_attendee, calendar_event: thirds, student: third)
+
+      results = described_class.for_students([first.id, second.id])
+
+      expect(results).to contain_exactly(firsts, seconds)
+    end
+
+    it 'returns an event both selected students attend exactly once' do
+      teacher = FactoryBot.create(:teacher)
+      first = FactoryBot.create(:student, teacher: teacher)
+      second = FactoryBot.create(:student, teacher: teacher)
+      shared = FactoryBot.create(:calendar_event, teacher: teacher)
+      FactoryBot.create(:event_attendee, calendar_event: shared, student: first)
+      FactoryBot.create(:event_attendee, calendar_event: shared, student: second)
+
+      expect(described_class.for_students([first.id, second.id])).to eq([shared])
     end
   end
 

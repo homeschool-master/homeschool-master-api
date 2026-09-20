@@ -353,4 +353,158 @@ RSpec.describe 'Api::V1::Tasks', type: :request do
       end
     end
   end
+
+  describe 'students and ownership' do
+    def json_task
+      JSON.parse(response.body)['data']
+    end
+
+    before do
+      @teacher = FactoryBot.create(:teacher)
+      @eliza = FactoryBot.create(:student, teacher: @teacher, first_name: 'Eliza')
+      @samuel = FactoryBot.create(:student, teacher: @teacher, first_name: 'Samuel')
+      sign_in(@teacher)
+    end
+
+    describe 'POST /api/v1/tasks' do
+      it 'creates a teacher owned task naming a student' do
+        post api_v1_tasks_url,
+             params: { title: 'Export report cards', owned_by: 'teacher', student_ids: [@eliza.id] },
+             as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(json_task['owned_by']).to eq('teacher')
+        expect(json_task['student_ids']).to eq([@eliza.id])
+      end
+
+      it 'creates a task naming several students' do
+        post api_v1_tasks_url,
+             params: { title: 'Tidy the schoolroom', owned_by: 'student',
+                       student_ids: [@eliza.id, @samuel.id] },
+             as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(json_task['student_ids']).to contain_exactly(@eliza.id, @samuel.id)
+      end
+
+      it 'creates a task naming nobody' do
+        post api_v1_tasks_url, params: { title: 'Pay the co-op dues' }, as: :json
+
+        expect(response).to have_http_status(:created)
+        expect(json_task['student_ids']).to eq([])
+        expect(json_task['owned_by']).to eq('teacher')
+      end
+
+      it 'refuses a student owned task that names nobody' do
+        post api_v1_tasks_url, params: { title: 'Science fair', owned_by: 'student' }, as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['error']['details']).to have_key('student_ids')
+      end
+
+      # The rule events already have: one id belonging to someone else rejects
+      # the whole request rather than being quietly dropped from it.
+      it 'refuses a real student id belonging to another teacher' do
+        other_teacher = FactoryBot.create(:teacher, email: 'other@test.com')
+        theirs = FactoryBot.create(:student, teacher: other_teacher, first_name: 'Noah')
+
+        post api_v1_tasks_url,
+             params: { title: 'Cross teacher', student_ids: [theirs.id] }, as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(JSON.parse(response.body)['error']['details']['student_ids'])
+          .to include('must all belong to the current teacher')
+      end
+
+      it 'creates nothing when one of several ids belongs to another teacher' do
+        other_teacher = FactoryBot.create(:teacher, email: 'other2@test.com')
+        theirs = FactoryBot.create(:student, teacher: other_teacher, first_name: 'Noah')
+
+        expect do
+          post api_v1_tasks_url,
+               params: { title: 'Partly mine', student_ids: [@eliza.id, theirs.id] }, as: :json
+        end.not_to change(Task, :count)
+
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+    end
+
+    describe 'PATCH /api/v1/tasks/:id' do
+      it 'replaces the student set outright' do
+        task = FactoryBot.create(:task, teacher: @teacher, students: [@eliza])
+
+        patch api_v1_task_url(task), params: { student_ids: [@samuel.id] }, as: :json
+
+        expect(json_task['student_ids']).to eq([@samuel.id])
+      end
+
+      it 'leaves the students alone when none are submitted' do
+        task = FactoryBot.create(:task, teacher: @teacher, students: [@eliza])
+
+        patch api_v1_task_url(task), params: { title: 'Renamed' }, as: :json
+
+        expect(json_task['student_ids']).to eq([@eliza.id])
+      end
+
+      it 'clears the students of a teacher owned task with an empty array' do
+        task = FactoryBot.create(:task, teacher: @teacher, students: [@eliza])
+
+        patch api_v1_task_url(task), params: { student_ids: [] }, as: :json
+
+        expect(json_task['student_ids']).to eq([])
+      end
+
+      # Refused rather than quietly handed back to the teacher: which of the
+      # two was meant is not something the server can know.
+      it 'refuses to take the last student off a task that is a student\'s' do
+        task = FactoryBot.create(:task, teacher: @teacher, owned_by: 'student', students: [@eliza])
+
+        patch api_v1_task_url(task), params: { student_ids: [] }, as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(task.reload.student_ids).to eq([@eliza.id])
+      end
+
+      it 'allows the last student off in the same request that hands it back' do
+        task = FactoryBot.create(:task, teacher: @teacher, owned_by: 'student', students: [@eliza])
+
+        patch api_v1_task_url(task),
+              params: { owned_by: 'teacher', student_ids: [] }, as: :json
+
+        expect(response).to have_http_status(:ok)
+        expect(json_task['student_ids']).to eq([])
+      end
+
+      it 'refuses making a task a student\'s while it names nobody' do
+        task = FactoryBot.create(:task, teacher: @teacher)
+
+        patch api_v1_task_url(task), params: { owned_by: 'student' }, as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it 'refuses a real student id belonging to another teacher' do
+        other_teacher = FactoryBot.create(:teacher, email: 'other3@test.com')
+        theirs = FactoryBot.create(:student, teacher: other_teacher, first_name: 'Noah')
+        task = FactoryBot.create(:task, teacher: @teacher, students: [@eliza])
+
+        patch api_v1_task_url(task), params: { student_ids: [theirs.id] }, as: :json
+
+        expect(response).to have_http_status(:unprocessable_content)
+        expect(task.reload.student_ids).to eq([@eliza.id])
+      end
+    end
+
+    describe 'GET /api/v1/tasks' do
+      it 'sends the students and the owner on each task' do
+        FactoryBot.create(:task, teacher: @teacher, owned_by: 'both', students: [@eliza, @samuel])
+
+        get api_v1_tasks_url
+
+        task = JSON.parse(response.body)['data'].first
+        expect(task['owned_by']).to eq('both')
+        expect(task['student_ids']).to contain_exactly(@eliza.id, @samuel.id)
+      end
+    end
+  end
 end
