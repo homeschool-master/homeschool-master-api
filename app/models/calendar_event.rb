@@ -10,6 +10,10 @@ class CalendarEvent < ApplicationRecord
   has_many :event_attendees, dependent: :destroy
   has_many :students, through: :event_attendees
 
+  # A series carries its rule; an ordinary event has none, which is what keeps
+  # every event created before this feature working untouched.
+  has_one :recurrence, as: :recurrable, dependent: :destroy
+
   # Validations
   validates :title, presence: true, length: { maximum: 255 }
   validates :start_time, presence: true
@@ -32,6 +36,22 @@ class CalendarEvent < ApplicationRecord
     joins(:event_attendees).where(event_attendees: { student_id: student_ids }).distinct
   }
   scope :chronological, -> { order(start_time: :asc) }
+
+  # Events that repeat, and events that do not. Every query has to serve both:
+  # one row stands for itself, the other stands for a series that is expanded.
+  scope :single, -> { where.missing(:recurrence) }
+  scope :series, -> { where.associated(:recurrence) }
+  # A series can reach a window when it starts on or before the end of it and
+  # has not already finished by the start of it. Whether it actually lands in
+  # the window is the schedule's business, not the query's.
+  scope :series_reaching, lambda { |range_end, local_from|
+    series.where(start_time: ..range_end)
+          .where('recurrences.until_date IS NULL OR recurrences.until_date >= ?', local_from)
+  }
+
+  def recurring?
+    recurrence.present?
+  end
 
   private
 
