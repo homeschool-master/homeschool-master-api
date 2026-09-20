@@ -12,7 +12,7 @@ class AssignmentGradeSerializer
   # percentage rides along because every client that shows a score shows it as
   # a percentage, and recomputing it needs the assignment's points_possible,
   # which a grade row on its own does not carry.
-  def to_h
+  def to_h # rubocop:disable Metrics/MethodLength
     {
       id: @grade.id,
       assignment_id: @grade.assignment_id,
@@ -20,6 +20,9 @@ class AssignmentGradeSerializer
       points_earned: @grade.points_earned,
       percentage: percentage,
       graded: @grade.graded?,
+      # What she typed, so reopening a mark shows the A rather than the 95 it
+      # became. Null when the score was entered as a number.
+      entered_letter: @grade.entered_letter,
       graded_at: @grade.graded_at,
       notes: @grade.notes
     }

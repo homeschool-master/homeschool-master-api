@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_20_160000) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_20_180200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -23,9 +23,22 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_20_160000) do
     t.datetime "graded_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "entered_letter"
     t.index ["assignment_id", "student_id"], name: "index_assignment_grades_on_assignment_id_and_student_id", unique: true
     t.index ["assignment_id"], name: "index_assignment_grades_on_assignment_id"
     t.index ["student_id"], name: "index_assignment_grades_on_student_id"
+  end
+
+  create_table "assignment_types", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "teacher_id", null: false
+    t.string "name", null: false
+    t.decimal "default_weight", precision: 10, scale: 2, default: "1.0", null: false
+    t.boolean "is_built_in", default: false, null: false
+    t.boolean "is_active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index "teacher_id, lower((name)::text)", name: "index_assignment_types_on_teacher_id_and_lower_name", unique: true, where: "is_active"
+    t.index ["teacher_id"], name: "index_assignment_types_on_teacher_id"
   end
 
   create_table "assignments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -38,6 +51,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_20_160000) do
     t.decimal "weight", precision: 10, scale: 2, default: "1.0", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.uuid "assignment_type_id", null: false
+    t.boolean "weight_overridden", default: false, null: false
+    t.index ["assignment_type_id"], name: "index_assignments_on_assignment_type_id"
     t.index ["subject_id"], name: "index_assignments_on_subject_id"
     t.index ["teacher_id", "due_date"], name: "index_assignments_on_teacher_id_and_due_date"
     t.index ["teacher_id"], name: "index_assignments_on_teacher_id"
@@ -202,6 +218,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_20_160000) do
 
   add_foreign_key "assignment_grades", "assignments", on_delete: :cascade
   add_foreign_key "assignment_grades", "students", on_delete: :cascade
+  add_foreign_key "assignment_types", "teachers", on_delete: :cascade
+  add_foreign_key "assignments", "assignment_types"
   add_foreign_key "assignments", "subjects"
   add_foreign_key "assignments", "teachers"
   add_foreign_key "calendar_events", "teachers", on_delete: :cascade

@@ -18,11 +18,19 @@ class AssignmentSerializer
       id: @assignment.id,
       teacher_id: @assignment.teacher_id,
       subject_id: @assignment.subject_id,
+      assignment_type_id: @assignment.assignment_type_id,
+      # The name rides along so a row can say what kind of work it is without
+      # the client holding the whole type list to look it up.
+      assignment_type_name: @assignment.assignment_type&.name,
       title: @assignment.title,
       description: @assignment.description,
       due_date: @assignment.due_date,
       points_possible: @assignment.points_possible,
       weight: @assignment.weight,
+      # Says whether this number came from the type or from the teacher, which
+      # is what lets the form tell her a later default change will or will not
+      # move it.
+      weight_overridden: @assignment.weight_overridden,
       grades: @assignment.assignment_grades.map { |grade| AssignmentGradeSerializer.render(grade) },
       created_at: @assignment.created_at
     }

@@ -96,6 +96,11 @@ def demo_teacher(email:, first_name:, last_name:, time_zone: Teacher::DEFAULT_TI
   # its assignments with it either way, but doing it in this order keeps the
   # rebuild readable rather than relying on the cascade.
   teacher.assignments.destroy_all
+  # Types go with them and are rebuilt from scratch, so a second run starts
+  # from the three built in ones at their starting weight rather than from
+  # whatever the last run left behind.
+  teacher.assignment_types.destroy_all
+  AssignmentType.create_built_ins_for(teacher)
   teacher.students.destroy_all
   teacher.tasks.destroy_all
   teacher.subjects.destroy_all
@@ -148,19 +153,56 @@ end
 # work at all, and an empty hash is an assignment set but not yet handed out.
 #
 # weight is how much the work counts next to other work in the same subject: 1
-# is ordinary, 2 counts double, 0 keeps it off the average altogether.
+# is ordinary, 2 counts double, 0 keeps it off the average altogether. Passing
+# it the same number as the type's default leaves the assignment inheriting;
+# passing a different one records it as the teacher's own choice, which is what
+# keeps a later change to that default from moving it.
+#
+# type is the kind of work. Left out, it is the ordinary Assignment, which is
+# what everything set before types existed is.
+#
+# A score may be a number or a letter. A letter goes in the way a teacher
+# entering one does, so the seeded rows carry the same provenance hers do.
 def add_assignment(teacher, subject:, title:, due: nil, points: 100, weight: 1, notes: nil,
-                   scores: {})
+                   type: nil, scores: {})
   assignment = teacher.assignments.create!(
-    subject: subject, title: title, description: notes,
-    due_date: due, points_possible: points, weight: weight
+    subject: subject, title: title, description: notes, due_date: due,
+    points_possible: points, weight: weight,
+    assignment_type: type || built_in_type(teacher, 'Assignment')
   )
 
-  scores.each do |student, earned|
-    assignment.assignment_grades.create!(student: student, points_earned: earned)
-  end
+  scores.each { |student, earned| record_score(assignment, student, earned) }
 
   assignment
+end
+
+def built_in_type(teacher, name)
+  teacher.assignment_types.find_by(name: name, is_built_in: true)
+end
+
+def add_assignment_type(teacher, name:, weight: 1)
+  teacher.assignment_types.create!(name: name, default_weight: weight, is_built_in: false)
+end
+
+# Changes what a kind of work counts by default. Seeded through the same
+# service the endpoint uses, so the seeded state is one a teacher could have
+# reached by clicking.
+def set_type_default(teacher, name, weight, mode: 'all', from_date: nil)
+  type = teacher.assignment_types.find_by(name: name)
+  AssignmentTypeDefaultWeight.call(type: type, weight: weight, mode: mode, from_date: from_date)
+  type
+end
+
+def record_score(assignment, student, earned)
+  grade = assignment.assignment_grades.build(student: student)
+
+  if earned.is_a?(String)
+    grade.apply_letter(earned)
+  else
+    grade.points_earned = earned
+  end
+
+  grade.save!
 end
 
 # hour is [hour, minute] in the teacher's zone, or nil for an all day event.
@@ -364,24 +406,39 @@ ActiveRecord::Base.transaction do
   # what a progress report with nothing in it looks like.
   eliza, samuel, ruth = whitfields
 
+  # Hannah teaches in the Charlotte Mason way, so she has a kind of work the
+  # built in three do not name, and she has it counting double.
+  one_narration = add_assignment_type(one, name: 'Narration', weight: 2)
+  # A built in type moved off its starting weight: tests count triple in this
+  # house, and every test she sets from now on inherits that.
+  set_type_default(one, 'Test', 3)
+  one_test = built_in_type(one, 'Test')
+  one_quiz = built_in_type(one, 'Quiz')
+
   # Fully marked, ordinary weight: the plain case.
   add_assignment(one, subject: one_math, title: 'Chapter 4 problems', due: weekday(2),
                       points: 20, weight: 1, notes: 'Odd numbered questions only.',
                       scores: { eliza => 18, samuel => 15 })
-  # Half weight: a quick check that should not count like a test.
+  # Half weight on a Quiz, whose default is 1: a weight she set on this one
+  # piece of work, so changing what quizzes count will not move it.
   add_assignment(one, subject: one_math, title: 'Times tables check', due: weekday(6),
-                      points: 10, weight: 0.5, scores: { eliza => 10, samuel => 7 })
-  # Triple weight, and part marked: the figure a teacher most needs the counts
-  # beside, since the heaviest piece is the one still outstanding.
+                      points: 10, weight: 0.5, type: one_quiz,
+                      scores: { eliza => 10, samuel => 7 })
+  # Triple weight inherited from Test rather than typed: the figure a teacher
+  # most needs the counts beside, since the heaviest piece is the one still
+  # outstanding.
   add_assignment(one, subject: one_math, title: 'Unit 2 test', due: weekday(12),
-                      points: 50, weight: 3, scores: { eliza => 44, samuel => nil })
+                      points: 50, weight: 3, type: one_test,
+                      scores: { eliza => 44, samuel => nil })
 
+  # Marked by letter rather than by percentage: the row that has to show the
+  # letter she chose when she opens it again.
   add_assignment(one, subject: one_english, title: 'Spelling list 3', due: weekday(3),
-                      points: 15, weight: 1, scores: { eliza => 15, samuel => 12, ruth => 9 })
+                      points: 15, weight: 1, scores: { eliza => 'A', samuel => 'B', ruth => 'C' })
   add_assignment(one, subject: one_english, title: "Narration: Pilgrim's Progress",
-                      due: weekday(9), points: 10, weight: 2,
+                      due: weekday(9), points: 10, weight: 2, type: one_narration,
                       notes: 'Told back in her own words, written down for her.',
-                      scores: { eliza => 9, samuel => nil })
+                      scores: { eliza => 'A', samuel => nil })
   # Zero weight: handed out and marked, deliberately kept off the average.
   add_assignment(one, subject: one_english, title: 'Copywork week 2', due: weekday(14),
                       points: 5, weight: 0, notes: 'Practice only, not counted.',
@@ -397,8 +454,10 @@ ActiveRecord::Base.transaction do
 
   add_assignment(one, subject: one_history, title: 'Ancient Egypt timeline', due: weekday(8),
                       points: 30, weight: 2, scores: { eliza => 27, samuel => 21 })
+  # Inherits the Quiz default of 1, so it is the pair to the times tables check
+  # above: same type, one following the default and one not.
   add_assignment(one, subject: one_latin, title: 'First declension quiz', due: weekday(4),
-                      points: 20, weight: 1, scores: { eliza => 16 })
+                      points: 20, weight: 1, type: one_quiz, scores: { eliza => 'B' })
   add_assignment(one, subject: one_art, title: 'Picture study: sunflowers', due: weekday(16),
                       points: 10, weight: 0, scores: { ruth => nil })
 
@@ -539,6 +598,10 @@ ActiveRecord::Base.transaction do
   # pieces across a dozen subjects, most of the roster on each. The marking
   # runs from fully done on the oldest work to untouched on the newest, which
   # is what a term looks like part way through.
+  # Marguerite runs a classical school room, where the long written piece at the
+  # end of a unit is the thing that counts.
+  two_paper = add_assignment_type(two, name: 'Term Paper', weight: 3)
+
   18.times do |index|
     subject = two_subjects[index % two_subjects.length]
     holders = aldermans.rotate(index).first(3 + (index % 4))
@@ -569,6 +632,7 @@ ActiveRecord::Base.transaction do
                       due: weekday(5), points: 10, weight: 0,
                       scores: aldermans.first(4).to_h { |student| [student, 9] })
   add_assignment(two, subject: two_subjects[6], title: 'Logic: term paper', due: weekday(20),
+                      type: two_paper,
                       points: 100, weight: 3)
 
   # A long list, so the dashboard panel has more open work than it shows and
@@ -655,11 +719,17 @@ ActiveRecord::Base.transaction do
   # An evening school's mark book: small, mostly marked, one piece still open.
   zuri, amara, kene = okafors
 
+  # Amara's house is a science house: the write up after the practical is its
+  # own kind of work, and it counts double.
+  four_lab = add_assignment_type(four, name: 'Lab Report', weight: 2)
+
   add_assignment(four, subject: four_astronomy, title: 'Moon phase observation log',
+                       type: four_lab,
                        due: weekday(3), points: 20, weight: 2,
                        notes: 'One sketch a night for two weeks.',
                        scores: { zuri => 19, amara => 17, kene => 12 })
   add_assignment(four, subject: four_astronomy, title: 'Constellation quiz', due: weekday(9),
+                       type: built_in_type(four, 'Quiz'),
                        points: 15, weight: 1, scores: { zuri => 14, amara => nil })
   add_assignment(four, subject: four_biology, title: 'Cell diagram labelling', due: weekday(6),
                        points: 25, weight: 1, scores: { zuri => 22, amara => 25, kene => 0 })
@@ -848,7 +918,8 @@ puts "Seeded demo teachers, anchored on #{ANCHOR}. Password for all: #{PASSWORD}
 Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.each do |teacher|
   puts format(
     '  %-20s %-24s students: %2d (+%d removed)  events: %4d (%d series)  tasks: %2d (%d open, %d theirs, %d repeating)  ' \
-    'subjects: %2d  assignments: %2d  grades: %3d (%d marked)  %s',
+    'subjects: %2d  types: %d (%d custom)  assignments: %2d (%d weighted by hand)  ' \
+    'grades: %3d (%d marked, %d by letter)  %s',
     teacher.email, teacher.full_name,
     teacher.students.active.count, teacher.students.where(is_active: false).count,
     teacher.calendar_events.count,
@@ -857,11 +928,15 @@ Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.ea
     teacher.tasks.count, teacher.tasks.where(completed_at: nil).count,
     teacher.tasks.where.not(owned_by: 'teacher').count, teacher.tasks.series.count,
     teacher.subjects.active.count,
-    teacher.assignments.count,
+    teacher.assignment_types.active.count, teacher.assignment_types.active.custom.count,
+    teacher.assignments.count, teacher.assignments.where(weight_overridden: true).count,
     AssignmentGrade.joins(:assignment).where(assignments: { teacher_id: teacher.id }).count,
     AssignmentGrade.joins(:assignment)
                    .where(assignments: { teacher_id: teacher.id })
                    .where.not(points_earned: nil).count,
+    AssignmentGrade.joins(:assignment)
+                   .where(assignments: { teacher_id: teacher.id })
+                   .where.not(entered_letter: nil).count,
     teacher.effective_time_zone
   )
 end

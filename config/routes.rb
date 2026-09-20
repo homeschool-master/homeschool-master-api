@@ -17,6 +17,8 @@ Rails.application.routes.draw do
         get 'progress', to: 'progress#show'
       end
 
+      resources :assignment_types, only: %i[index create update destroy]
+
       resources :assignments, only: %i[index show create update destroy] do
         resources :grades, only: %i[index update], controller: 'assignment_grades'
       end

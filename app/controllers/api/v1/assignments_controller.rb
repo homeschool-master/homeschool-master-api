@@ -24,7 +24,7 @@ module Api
         student_ids = submitted_student_ids
         return render_unowned_students if student_ids && !students_owned?(student_ids)
 
-        assignment = current_teacher.assignments.build(assignment_params)
+        assignment = current_teacher.assignments.build(with_default_type(assignment_params))
         return render_validation_errors(assignment) unless assignment.valid?
 
         save_with_students(assignment, student_ids)
@@ -60,9 +60,14 @@ module Api
       private
 
       def filtered_assignments
-        assignments = current_teacher.assignments.includes(:assignment_grades).chronological
+        all = current_teacher.assignments.includes(:assignment_grades, :assignment_type).chronological
+        apply_due_range(narrowed(all))
+      end
+
+      def narrowed(assignments)
         assignments = assignments.for_subject(params[:subject_id]) if params[:subject_id].present?
-        apply_due_range(assignments)
+        assignments = assignments.for_type(params[:assignment_type_id]) if params[:assignment_type_id].present?
+        assignments
       end
 
       def apply_due_range(assignments)
@@ -95,8 +100,22 @@ module Api
         render_not_found('Assignment') if @assignment.nil?
       end
 
+      # A request that names no type gets the ordinary one. Types arrived after
+      # this endpoint did, and work set without saying what kind it is has
+      # always been an assignment.
+      def with_default_type(attributes)
+        return attributes if attributes[:assignment_type_id].present?
+
+        attributes.merge(assignment_type_id: default_type_id)
+      end
+
+      def default_type_id
+        current_teacher.assignment_types.active.built_in
+                       .find_by(name: 'Assignment')&.id
+      end
+
       def assignment_params
-        params.permit(:subject_id, :title, :description, :due_date, :points_possible, :weight)
+        params.permit(:subject_id, :assignment_type_id, :title, :description, :due_date, :points_possible, :weight)
       end
 
       # nil means the client did not submit the set at all, so it is left alone.

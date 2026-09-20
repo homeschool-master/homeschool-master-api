@@ -18,11 +18,6 @@
 # enters zero, and that counts. Both counts are reported so the reader can see
 # what the number is based on.
 class ProgressReport
-  # 90/80/70/60, the ordinary US scale. Derived on read rather than stored, so
-  # changing it costs nothing and never invalidates a saved grade.
-  LETTER_THRESHOLDS = [[90, 'A'], [80, 'B'], [70, 'C'], [60, 'D']].freeze
-  LOWEST_LETTER = 'F'
-
   def self.call(student:, from:, to:)
     new(student: student, from: from, to: to).call
   end
@@ -110,11 +105,10 @@ class ProgressReport
     round2(weighted / weight_total * 100)
   end
 
+  # The scale lives in LetterScale, which is also what turns a letter a teacher
+  # types into a score. One definition, so an A entered is an A derived.
   def letter(percentage)
-    return nil if percentage.nil?
-
-    LETTER_THRESHOLDS.each { |threshold, letter| return letter if percentage >= threshold }
-    LOWEST_LETTER
+    LetterScale.letter_for(percentage)
   end
 
   def round2(value)

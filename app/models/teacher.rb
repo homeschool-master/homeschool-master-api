@@ -14,6 +14,7 @@ class Teacher < ApplicationRecord
   has_many :subjects, dependent: :destroy
   has_many :tasks, dependent: :destroy
   has_many :assignments, dependent: :destroy
+  has_many :assignment_types, dependent: :destroy
 
   # Validations
   validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }
@@ -30,6 +31,9 @@ class Teacher < ApplicationRecord
   # Callbacks
   before_save :downcase_email
   before_create :generate_email_verification_token
+  # A new account can set work on its first day rather than having to invent a
+  # vocabulary before it can grade anything.
+  after_create -> { AssignmentType.create_built_ins_for(self) }
   before_save :nullify_blank_middle_name
 
   # Scopes

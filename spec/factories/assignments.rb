@@ -4,6 +4,9 @@ FactoryBot.define do
   factory :assignment do
     association :teacher
     subject { association :subject, teacher: teacher }
+    # Every teacher is created with the three built in types, so the ordinary
+    # one is already there to point at rather than being built a second time.
+    assignment_type { teacher.assignment_types.find_by(name: 'Assignment') }
     sequence(:title) { |n| "Assignment #{n}" }
     due_date { Date.new(2026, 9, 20) }
     points_possible { 100 }
