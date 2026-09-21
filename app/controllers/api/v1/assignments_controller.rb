@@ -3,6 +3,8 @@
 module Api
   module V1
     class AssignmentsController < BaseController
+      include AssignmentWeighting
+
       before_action :set_assignment, only: %i[show update destroy]
 
       # GET /api/v1/assignments?subject_id=&due_from=&due_to=
@@ -24,7 +26,8 @@ module Api
         student_ids = submitted_student_ids
         return render_unowned_students if student_ids && !students_owned?(student_ids)
 
-        assignment = current_teacher.assignments.build(with_default_type(assignment_params))
+        assignment = current_teacher.assignments.build(with_default_type(assignment_params.except(:weight)))
+        apply_weight(assignment)
         return render_validation_errors(assignment) unless assignment.valid?
 
         save_with_students(assignment, student_ids)
@@ -42,7 +45,8 @@ module Api
         student_ids = submitted_student_ids
         return render_unowned_students if student_ids && !students_owned?(student_ids)
 
-        @assignment.assign_attributes(assignment_params)
+        @assignment.assign_attributes(assignment_params.except(:weight))
+        apply_weight(@assignment)
         return render_validation_errors(@assignment) unless @assignment.valid?
 
         save_with_students(@assignment, student_ids)

@@ -168,11 +168,21 @@ end
 # entering one does, so the seeded rows carry the same provenance hers do.
 def add_assignment(teacher, subject:, title:, due: nil, points: 100, weight: 1, notes: nil,
                    type: nil, scores: {})
-  assignment = teacher.assignments.create!(
+  assignment = teacher.assignments.build(
     subject: subject, title: title, description: notes, due_date: due,
-    points_possible: points, weight: weight,
-    assignment_type: type || built_in_type(teacher, 'Assignment')
+    points_possible: points, assignment_type: type || built_in_type(teacher, 'Assignment')
   )
+
+  # Whether a weight is the teacher's own is a decision the app records rather
+  # than infers, so the seed has to make it. Here a weight that differs from
+  # the type's default is one she chose, which is the story this fixture is
+  # telling: it is a statement about the demo data, not a rule of the system.
+  if weight == assignment.assignment_type.default_weight
+    assignment.inherit_weight!
+  else
+    assignment.override_weight!(weight)
+  end
+  assignment.save!
 
   scores.each { |student, earned| record_score(assignment, student, earned) }
 

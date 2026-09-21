@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-# Every association in the app hangs off a teacher, so this class grows by one
-# line each time a feature ships. Splitting it to satisfy the length cop would
-# scatter eight one line associations across a concern that exists only for the
-# linter, which is worse code than a class that is one line over.
-class Teacher < ApplicationRecord # rubocop:disable Metrics/ClassLength
+class Teacher < ApplicationRecord
+  # Everything about proving control of an inbox: the verification, password
+  # reset and email change tokens, and their expiry windows.
+  include OneTimeTokens
+
   has_secure_password
 
   # Used when a teacher has no zone of their own. The column stays nullable and
@@ -35,7 +35,6 @@ class Teacher < ApplicationRecord # rubocop:disable Metrics/ClassLength
 
   # Callbacks
   before_save :downcase_email
-  before_create :generate_email_verification_token
   # A new account can set work on its first day rather than having to invent a
   # vocabulary before it can grade anything.
   after_create -> { AssignmentType.create_built_ins_for(self) }
@@ -61,68 +60,6 @@ class Teacher < ApplicationRecord # rubocop:disable Metrics/ClassLength
     nickname.presence || full_name
   end
 
-  def email_verified?
-    email_verified_at.present?
-  end
-
-  def verify_email!
-    update!(email_verified_at: Time.current, email_verification_token: nil)
-  end
-
-  def generate_password_reset_token!
-    update!(
-      password_reset_token: SecureRandom.urlsafe_base64(32),
-      password_reset_sent_at: Time.current
-    )
-  end
-
-  def password_reset_token_valid?
-    return false if password_reset_token.blank? || password_reset_sent_at.blank?
-
-    password_reset_sent_at > 1.hours.ago
-  end
-
-  def clear_password_reset_token!
-    update!(
-      password_reset_token: nil,
-      password_reset_sent_at: nil
-    )
-  end
-
-  def generate_email_change_token!(new_email)
-    update!(
-      pending_email: new_email,
-      email_change_token: SecureRandom.urlsafe_base64(32),
-      email_change_sent_at: Time.current
-    )
-  end
-
-  def email_change_token_valid?
-    return false if email_change_token.blank? || email_change_sent_at.blank?
-
-    email_change_sent_at > 1.hour.ago
-  end
-
-  def confirm_email_change!
-    return false if pending_email.blank?
-
-    self.email = pending_email
-    self.email_verified_at = Time.current
-    self.email_verification_token = nil
-    self.pending_email = nil
-    self.email_change_token = nil
-    self.email_change_sent_at = nil
-    save
-  end
-
-  def clear_email_change!
-    update!(
-      pending_email: nil,
-      email_change_token: nil,
-      email_change_sent_at: nil
-    )
-  end
-
   # Class methods
 
   # Finds teacher regardless of email casing. Usefull when resetting pw and email, etc
@@ -134,11 +71,6 @@ class Teacher < ApplicationRecord # rubocop:disable Metrics/ClassLength
 
   def downcase_email
     self.email = email&.downcase
-  end
-
-  # Token sent to user's inbox - proves they own the email address
-  def generate_email_verification_token
-    self.email_verification_token = SecureRandom.urlsafe_base64(32)
   end
 
   def password_required?

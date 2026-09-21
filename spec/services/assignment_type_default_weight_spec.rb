@@ -7,11 +7,15 @@ RSpec.describe AssignmentTypeDefaultWeight do
   let(:subject_record) { FactoryBot.create(:subject, teacher: teacher) }
   let(:test_type) { teacher.assignment_types.find_by(name: 'Test') }
 
-  # Weight is passed through the model so the inherited or overridden decision
-  # is made the way a request would make it, rather than being set by hand here.
-  def assignment(weight:, due: Date.new(2026, 9, 1), type: test_type)
-    FactoryBot.create(:assignment, teacher: teacher, subject: subject_record,
-                                   assignment_type: type, weight: weight, due_date: due)
+  # Whether a weight is the teacher's own is now a decision rather than
+  # something inferred from the number, so a test that means "she typed this
+  # one" says so, the same way the endpoint does.
+  def assignment(weight:, due: Date.new(2026, 9, 1), type: test_type, overridden: false)
+    record = FactoryBot.build(:assignment, teacher: teacher, subject: subject_record,
+                                           assignment_type: type, due_date: due)
+    overridden ? record.override_weight!(weight) : record.assign_attributes(weight: weight)
+    record.save!
+    record
   end
 
   describe 'new_only' do
@@ -132,7 +136,7 @@ RSpec.describe AssignmentTypeDefaultWeight do
   # The question the whole schema was shaped around.
   describe 'an assignment whose weight the teacher set by hand' do
     it 'keeps its weight when the default changes for all' do
-      overridden = assignment(weight: 5)
+      overridden = assignment(weight: 5, overridden: true)
 
       described_class.call(type: test_type, weight: 3, mode: 'all')
 
@@ -140,7 +144,7 @@ RSpec.describe AssignmentTypeDefaultWeight do
     end
 
     it 'keeps its weight when the default changes from a date it falls after' do
-      overridden = assignment(weight: 5, due: Date.new(2026, 9, 1))
+      overridden = assignment(weight: 5, due: Date.new(2026, 9, 1), overridden: true)
 
       described_class.call(type: test_type, weight: 3, mode: 'from_date', from_date: Date.new(2026, 8, 1))
 
@@ -148,7 +152,7 @@ RSpec.describe AssignmentTypeDefaultWeight do
     end
 
     it 'keeps its weight through a run of default changes' do
-      overridden = assignment(weight: 5)
+      overridden = assignment(weight: 5, overridden: true)
 
       described_class.call(type: test_type, weight: 3, mode: 'all')
       described_class.call(type: test_type, weight: 2, mode: 'all')
@@ -157,24 +161,36 @@ RSpec.describe AssignmentTypeDefaultWeight do
       expect(overridden.reload.weight).to eq(5)
     end
 
-    it 'is recorded as overridden the moment it is given a weight of its own' do
-      expect(assignment(weight: 5).weight_overridden).to be(true)
+    it 'is recorded as overridden the moment the teacher sets one' do
+      expect(assignment(weight: 5, overridden: true).weight_overridden).to be(true)
       expect(assignment(weight: 1).weight_overridden).to be(false)
     end
 
-    # Typing the same number the default already says is not a decision to
-    # depart from it.
-    it 'counts a weight equal to the default as inherited' do
+    # The case the old rule got wrong: typing the number the default already
+    # says is still her choosing it, and a later change to that default must
+    # not move work she had settled.
+    it 'counts a weight she typed as hers even when it equals the default' do
       test_type.update!(default_weight: 3)
+      same_as_default = assignment(weight: 3, overridden: true)
 
-      expect(assignment(weight: 3).weight_overridden).to be(false)
+      expect(same_as_default.weight_overridden).to be(true)
+
+      described_class.call(type: test_type, weight: 5, mode: 'all')
+
+      expect(same_as_default.reload.weight).to eq(3)
     end
 
-    it 'goes back to inheriting when the teacher puts the default back' do
-      one = assignment(weight: 5)
-      one.update!(weight: 1)
+    it 'follows the default again once it is handed back' do
+      one = assignment(weight: 5, overridden: true)
+      one.inherit_weight!
+      one.save!
 
       expect(one.reload.weight_overridden).to be(false)
+      expect(one.weight).to eq(test_type.reload.default_weight)
+
+      described_class.call(type: test_type, weight: 4, mode: 'all')
+
+      expect(one.reload.weight).to eq(4)
     end
 
     it 'is not pinned by an edit that leaves the weight alone' do

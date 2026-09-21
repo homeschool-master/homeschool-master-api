@@ -160,9 +160,12 @@ RSpec.describe 'Api::V1::AssignmentTypes', type: :request do
       @test = @teacher.assignment_types.find_by(name: 'Test')
     end
 
-    def a_test(weight:, due: Date.new(2026, 9, 1))
-      FactoryBot.create(:assignment, teacher: @teacher, subject: @subject,
-                                     assignment_type: @test, weight: weight, due_date: due)
+    def a_test(weight:, due: Date.new(2026, 9, 1), overridden: false)
+      record = FactoryBot.build(:assignment, teacher: @teacher, subject: @subject,
+                                             assignment_type: @test, due_date: due)
+      overridden ? record.override_weight!(weight) : record.assign_attributes(weight: weight)
+      record.save!
+      record
     end
 
     it 'renames a custom type' do
@@ -209,7 +212,7 @@ RSpec.describe 'Api::V1::AssignmentTypes', type: :request do
     end
 
     it 'leaves a hand set weight alone whatever the mode' do
-      overridden = a_test(weight: 5)
+      overridden = a_test(weight: 5, overridden: true)
       patch api_v1_assignment_type_url(@test), params: { default_weight: 3, apply_mode: 'all' }
 
       expect(overridden.reload.weight).to eq(5)

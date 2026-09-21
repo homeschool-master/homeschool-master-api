@@ -3,12 +3,6 @@
 class Assignment < ApplicationRecord
   # Callbacks
   before_save :nullify_blank_description
-  # Only when one of the two things it describes is actually being set. A title
-  # edit must not silently pin a weight, and an inherited weight that does not
-  # currently equal its default is a real state: it is what "new assignments
-  # only" leaves behind.
-  before_save :record_weight_source,
-              if: -> { will_save_change_to_weight? || will_save_change_to_assignment_type_id? }
 
   # Associations
   #
@@ -48,16 +42,24 @@ class Assignment < ApplicationRecord
     !weight_overridden?
   end
 
-  private
-
-  # The rule in one sentence: a weight that differs from the type's default at
-  # the moment the teacher sets it is a choice about this assignment, and
-  # nothing that happens to the default afterwards may touch it.
-  def record_weight_source
-    return if assignment_type.nil?
-
-    self.weight_overridden = weight != assignment_type.default_weight
+  # A weight the teacher typed, whatever the number.
+  #
+  # Touching the field is the decision, not the value that came out of it.
+  # Comparing against the type's default instead would mean a teacher who
+  # deliberately types 1 when the default is 1 gets an inherited weight, and
+  # the next change to that default moves work she had already settled.
+  def override_weight!(value)
+    self.weight = value
+    self.weight_overridden = true
   end
+
+  # Hands the assignment back to its type, so it follows the default again.
+  def inherit_weight!
+    self.weight = assignment_type&.default_weight
+    self.weight_overridden = false
+  end
+
+  private
 
   def nullify_blank_description
     self.description = nil if description.blank?
