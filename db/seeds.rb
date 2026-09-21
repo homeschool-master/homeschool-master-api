@@ -362,11 +362,17 @@ ActiveRecord::Base.transaction do
   )
   # One week it moved to the afternoon: an edited occurrence is a standalone
   # event, and the series stops producing that date.
-  edit_occurrence(latin, ANCHOR + 14, title: 'Latin drill, moved to the afternoon',
-                         start_time: local_time(one.effective_time_zone, ANCHOR + 14, 15, 0),
-                         end_time: local_time(one.effective_time_zone, ANCHOR + 14, 15, 30))
+  #
+  # Both dates are picked by weekday rather than by an offset from the anchor.
+  # An exception only means anything on a date the rule actually produces, and
+  # a fixed offset lands on the right weekday only in the months where the
+  # anchor happens to fall on one.
+  latin_moved = nth_weekday_of(ANCHOR, 2, 3)
+  edit_occurrence(latin, latin_moved, title: 'Latin drill, moved to the afternoon',
+                         start_time: local_time(one.effective_time_zone, latin_moved, 15, 0),
+                         end_time: local_time(one.effective_time_zone, latin_moved, 15, 30))
   # Another week it did not happen at all.
-  skip_occurrence(latin, ANCHOR + 21)
+  skip_occurrence(latin, nth_weekday_of(ANCHOR, 4, 3))
 
   # The same weekday position each month rather than the same date: the co-op
   # meets on the second Friday, whichever date that falls on.
@@ -377,8 +383,10 @@ ActiveRecord::Base.transaction do
   )
 
   # A series that has ended: swimming ran weekly through the summer and stopped.
+  # Named for the term it ran in, so it is not confused with the one off swim
+  # lesson on the activities list: an ended series is worth being able to find.
   repeat(
-    add_event(one, title: 'Swim lessons', date: ANCHOR - 60, hour: [16, 0], minutes: 45,
+    add_event(one, title: 'Summer swim lessons', date: ANCHOR - 60, hour: [16, 0], minutes: 45,
                    students: whitfields.last(2), location: 'Community pool'),
     frequency: 'weekly', weekdays: [3], until_date: ANCHOR - 7
   )
@@ -388,6 +396,14 @@ ActiveRecord::Base.transaction do
     add_event(one, title: 'Morning read aloud', date: ANCHOR, hour: [8, 0], minutes: 20,
                    students: whitfields, location: 'Living room'),
     frequency: 'daily', until_date: ANCHOR + 90
+  )
+
+  # Once a year, and all day: the fourth frequency the rule supports, on the
+  # one kind of entry a family actually repeats annually.
+  repeat(
+    add_event(one, title: "Eliza's birthday", date: ANCHOR + 3, students: [whitfields[0]],
+                   notes: 'No lessons after lunch.'),
+    frequency: 'yearly'
   )
 
   # A full classical spread, one colour each from the shared palette.
@@ -587,6 +603,60 @@ ActiveRecord::Base.transaction do
   add_event(two, title: 'Regional debate tournament', date: weekday(14), hour: [9, 0],
                  minutes: 300, students: [anselm, aldermans[0]], location: 'Northside High School')
 
+  # A ten child household runs on a timetable, so the busy account carries the
+  # same repeating shapes the small one does, at its own scale. All four
+  # frequencies, both monthly anchors, an ended series, and an occurrence moved
+  # and another dropped.
+  assembly = repeat(
+    add_event(two, title: 'Morning assembly', date: ANCHOR, hour: [8, 0], minutes: 20,
+                   students: aldermans, location: 'Home classroom',
+                   notes: 'Hymn, memory verse, and the day read out.'),
+    frequency: 'weekly', weekdays: [1, 3, 5]
+  )
+  # One morning it ran long and moved; another it was dropped for a trip. Both
+  # dates are Wednesdays picked by position, so they are occurrences the rule
+  # really produces whatever weekday the month starts on.
+  assembly_long = nth_weekday_of(ANCHOR, 3, 2)
+  edit_occurrence(assembly, assembly_long, title: 'Morning assembly, extended for prize giving',
+                            start_time: local_time(two.effective_time_zone, assembly_long, 8, 0),
+                            end_time: local_time(two.effective_time_zone, assembly_long, 9, 30))
+  skip_occurrence(assembly, nth_weekday_of(ANCHOR, 3, 3))
+
+  # The same weekday position each month: the co-op runs on the first Friday.
+  repeat(
+    add_event(two, title: 'Co-op teaching day', date: nth_weekday_of(ANCHOR, 5, 1), hour: [9, 30],
+                   minutes: 240, students: aldermans, location: 'Fellowship hall'),
+    frequency: 'monthly', monthly_anchor: 'weekday_position'
+  )
+
+  # The same date each month rather than the same weekday: book club is always
+  # the fifteenth, whichever day that lands on.
+  repeat(
+    add_event(two, title: 'Family book club', date: Date.new(ANCHOR.year, ANCHOR.month, 15),
+                   hour: [19, 0], minutes: 60, students: aldermans.first(6), location: 'Living room'),
+    frequency: 'monthly', monthly_anchor: 'day_of_month'
+  )
+
+  # Once a year, all day: the anniversary of the day they started home schooling.
+  repeat(
+    add_event(two, title: 'First day of school anniversary', date: ANCHOR + 5, students: aldermans),
+    frequency: 'yearly'
+  )
+
+  # A series that has finished: swimming ran through the summer and stopped.
+  repeat(
+    add_event(two, title: 'Swim term', date: ANCHOR - 70, hour: [16, 30], minutes: 45,
+                   students: aldermans.last(5), location: 'Community center pool'),
+    frequency: 'weekly', weekdays: [2], until_date: ANCHOR - 14
+  )
+
+  # All day entries, and one with nobody on it: a planning day is the teacher's
+  # own, which is what an event with no attendees looks like.
+  ALL_DAY_EVENTS.first(2).each_with_index do |(title, note), index|
+    add_event(two, title: title, date: weekday(6 + (index * 7)), students: aldermans, notes: note)
+  end
+  add_event(two, title: 'Term planning, no lessons', date: weekday(17), notes: 'Next term mapped out.')
+
   # Ten students across a dozen subjects, including the specialist ones a
   # bigger family splits out.
   two_subjects =
@@ -598,7 +668,7 @@ ActiveRecord::Base.transaction do
   # pieces across a dozen subjects, most of the roster on each. The marking
   # runs from fully done on the oldest work to untouched on the newest, which
   # is what a term looks like part way through.
-  # Marguerite runs a classical school room, where the long written piece at the
+  # Marcus runs a classical school room, where the long written piece at the
   # end of a unit is the thing that counts.
   two_paper = add_assignment_type(two, name: 'Term Paper', weight: 3)
 
@@ -635,6 +705,31 @@ ActiveRecord::Base.transaction do
                       type: two_paper,
                       points: 100, weight: 3)
 
+  # Marked by letter rather than by percentage, on a recitation where a number
+  # out of ten was never the point. Every letter on the scale appears, so the
+  # key on the scoring panel has something to stand next to.
+  add_assignment(
+    two, subject: two_subjects[8], title: 'Recitation: autumn poem', due: weekday(8),
+    points: 20, type: built_in_type(two, 'Quiz'),
+    scores: aldermans.first(5).each_with_index.to_h { |student, index| [student, %w[A B C D F][index]] }
+  )
+
+  # An explicit zero next to real marks: work that was set, not done, and
+  # counts as nothing earned rather than being left unmarked.
+  add_assignment(
+    two, subject: two_subjects[0], title: 'Math: end of unit test', due: weekday(11),
+    points: 50, type: built_in_type(two, 'Test'),
+    scores: { aldermans[0] => 47, aldermans[1] => 0, aldermans[2] => 39, aldermans[3] => nil }
+  )
+
+  # No due date, so it belongs to no report period and shows on the list and in
+  # no figure: the ongoing portfolio a classical school room keeps all year.
+  add_assignment(
+    two, subject: two_subjects[3], title: 'Commonplace book, ongoing', points: 25,
+    notes: 'Added to through the year rather than handed in.',
+    scores: aldermans.first(3).to_h { |student| [student, 22] }
+  )
+
   # A long list, so the dashboard panel has more open work than it shows and
   # the See More link has somewhere to go.
   [
@@ -654,6 +749,22 @@ ActiveRecord::Base.transaction do
   )
   tick_occurrence(registers, last_weekday(1), done_days_ago: 0)
   tick_occurrence(registers, last_weekday(1) - 7, done_days_ago: 7)
+
+  # A daily series with an end, and one occurrence edited out into a task of
+  # its own: the same shapes the small account has, at ten children's scale.
+  lunches = repeat(
+    add_task(two, title: 'Pack lunches for the morning', due: Date.current,
+                  students: aldermans.first(4), owned_by: 'both'),
+    frequency: 'daily', until_date: Date.current + 45
+  )
+  tick_occurrence(lunches, Date.current - 1, done_days_ago: 1)
+  edit_task_occurrence(lunches, Date.current + 2, title: 'Pack lunches, plus the co-op picnic')
+
+  # The same date every month, on the household admin nobody enjoys.
+  repeat(
+    add_task(two, title: 'Reconcile the curriculum budget', due: Date.new(ANCHOR.year, ANCHOR.month, 28)),
+    frequency: 'monthly', monthly_anchor: 'day_of_month'
+  )
   add_task(two, title: 'Order the winter term curriculum', due: Date.current - 14, done_days_ago: 6)
   add_task(two, title: 'Send term one progress notes to grandparents', done_days_ago: 2)
 
