@@ -578,11 +578,15 @@ ActiveRecord::Base.transaction do
 
   # Her report cards: one of every state the feature has.
   #
-  # An issued card for the term that finished, frozen, so rescoring anything
-  # inside it afterwards leaves it alone. Eliza's Latin was stronger than the
-  # quiz average showed, so that line is overridden with the reason on it.
+  # An issued card, frozen, so rescoring anything inside it afterwards leaves
+  # it alone. Eliza's Latin was stronger than the quiz average showed, so that
+  # line is overridden with the reason on it.
+  #
+  # The period is the one her work is actually in. A card covering a span with
+  # no assignments in it reports "no marks yet" on every line, which
+  # demonstrates nothing and is not what a teacher would ever issue.
   eliza_autumn = add_report_card(
-    one, student: eliza, title: 'Autumn term', from: ANCHOR - 60, to: ANCHOR - 1,
+    one, student: eliza, title: 'Autumn term', from: ANCHOR, to: Date.current,
     comments: 'A steady term. Reading has come on a long way since September.',
     issued: true,
     overrides: { one_latin => ['A', 'Recitation and sight reading well beyond the quiz scores'] },
@@ -601,7 +605,7 @@ ActiveRecord::Base.transaction do
   # A draft for the term that is running: its grades follow her marking and
   # keep moving until she issues it.
   add_report_card(
-    one, student: samuel, title: 'Winter term so far', from: ANCHOR, to: Date.current,
+    one, student: samuel, title: 'Autumn term so far', from: ANCHOR, to: Date.current,
     comments: 'Written up to today. Not final.'
   )
 
@@ -866,7 +870,7 @@ ActiveRecord::Base.transaction do
   # finished, and two drafts for the one running.
   aldermans.first(4).each_with_index do |student, index|
     add_report_card(
-      two, student: student, title: 'Michaelmas term', from: ANCHOR - 60, to: ANCHOR - 1,
+      two, student: student, title: 'Michaelmas term', from: ANCHOR, to: Date.current,
       comments: 'Issued at the end of Michaelmas.', issued: true,
       # One of the four carries an override, on the subject where a written
       # piece showed more than the marks did.
@@ -877,7 +881,7 @@ ActiveRecord::Base.transaction do
 
   aldermans[4..5].each do |student|
     add_report_card(
-      two, student: student, title: 'Hilary term so far', from: ANCHOR, to: Date.current
+      two, student: student, title: 'Hilary term so far', from: ANCHOR, to: ANCHOR + 20
     )
   end
 
