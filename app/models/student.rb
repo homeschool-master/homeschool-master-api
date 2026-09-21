@@ -6,6 +6,7 @@ class Student < ApplicationRecord
 
   # Associations
   belongs_to :teacher
+  has_many :report_cards, dependent: :destroy
 
   has_many :event_attendees, dependent: :destroy
   has_many :calendar_events, through: :event_attendees

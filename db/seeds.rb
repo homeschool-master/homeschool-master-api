@@ -103,6 +103,9 @@ def demo_teacher(email:, first_name:, last_name:, time_zone: Teacher::DEFAULT_TI
   AssignmentType.create_built_ins_for(teacher)
   teacher.students.destroy_all
   teacher.tasks.destroy_all
+  # Before the subjects their entries point at, and before the students they
+  # belong to, so a rebuild starts from nothing rather than from half a card.
+  teacher.report_cards.destroy_all
   teacher.subjects.destroy_all
   teacher
 end
@@ -203,6 +206,55 @@ def record_score(assignment, student, earned)
   end
 
   grade.save!
+end
+
+# A report card: a saved copy of one student's grades for a period.
+#
+# issued freezes it. A draft is left unissued, and its grades keep following
+# the marking, which is what a teacher is looking at while she writes one.
+#
+# overrides maps a subject to the letter she issued instead of the calculated
+# one, optionally with a reason. The calculated grade is kept either way, so
+# the card can show what the override replaced.
+def add_report_card(teacher, student:, title:, from:, to:, comments: nil, issued: false,
+                    overall_override: nil, overall_reason: nil, overrides: {}, subject_comments: {})
+  card = teacher.report_cards.create!(
+    student: student, title: title, period_start: from, period_end: to, comments: comments,
+    group_id: SecureRandom.uuid, version: 1,
+    overall_override_letter: overall_override, overall_override_reason: overall_reason
+  )
+
+  apply_card_entries(card, overrides, subject_comments)
+  ReportCardSnapshot.call(card) if issued
+  card
+end
+
+# Her words and her overrides, stored before any snapshot is taken so an
+# issued card carries them too.
+def apply_card_entries(card, overrides, subject_comments)
+  (overrides.keys | subject_comments.keys).each do |subject|
+    entry = card.report_card_entries.find_or_initialize_by(subject_id: subject.id)
+    entry.subject_name = subject.name
+    letter, reason = Array(overrides[subject])
+    entry.override_letter = letter
+    entry.override_reason = reason
+    entry.comments = subject_comments[subject]
+    entry.save!
+  end
+end
+
+# The next version of an issued card, through the same service the endpoint
+# uses, so the seeded history is one a teacher could have produced by clicking.
+def revise_report_card(card, title: nil, comments: nil, issued: false, overrides: {})
+  copy = ReportCardVersion.call(card)
+  copy.title = title if title
+  copy.comments = comments if comments
+  copy.save!
+  apply_card_entries(copy, overrides, {})
+  # Issuing a version re-snapshots from current grades, which is the point of
+  # reissuing after a correction.
+  ReportCardSnapshot.call(copy) if issued
+  copy
 end
 
 # hour is [hour, minute] in the teacher's zone, or nil for an all day event.
@@ -524,6 +576,35 @@ ActiveRecord::Base.transaction do
                 students: [samuel], owned_by: 'both')
   add_task(one, title: 'Read one chapter a night', students: [samuel], owned_by: 'both')
 
+  # Her report cards: one of every state the feature has.
+  #
+  # An issued card for the term that finished, frozen, so rescoring anything
+  # inside it afterwards leaves it alone. Eliza's Latin was stronger than the
+  # quiz average showed, so that line is overridden with the reason on it.
+  eliza_autumn = add_report_card(
+    one, student: eliza, title: 'Autumn term', from: ANCHOR - 60, to: ANCHOR - 1,
+    comments: 'A steady term. Reading has come on a long way since September.',
+    issued: true,
+    overrides: { one_latin => ['A', 'Recitation and sight reading well beyond the quiz scores'] },
+    subject_comments: { one_math => 'Times tables are secure now.' }
+  )
+
+  # The same card reissued: a second version, with the first still readable
+  # beside it. This is what editing an issued card produces.
+  revise_report_card(
+    eliza_autumn, title: 'Autumn term, revised',
+    comments: 'A steady term. Reading has come on a long way since September. ' \
+              'Corrected after remarking the unit test.',
+    issued: true
+  )
+
+  # A draft for the term that is running: its grades follow her marking and
+  # keep moving until she issues it.
+  add_report_card(
+    one, student: samuel, title: 'Winter term so far', from: ANCHOR, to: Date.current,
+    comments: 'Written up to today. Not final.'
+  )
+
   # Her repeating to-dos, and the reference set for how a task series behaves.
   #
   # Weekly, with one week already ticked and the rest still open: a tick names
@@ -781,6 +862,25 @@ ActiveRecord::Base.transaction do
   add_task(two, title: 'Chase the missing algebra workbook for Josiah', due: Date.current - 4,
                 students: [aldermans[0]])
 
+  # Ten children means report cards in bulk: four issued for the term that
+  # finished, and two drafts for the one running.
+  aldermans.first(4).each_with_index do |student, index|
+    add_report_card(
+      two, student: student, title: 'Michaelmas term', from: ANCHOR - 60, to: ANCHOR - 1,
+      comments: 'Issued at the end of Michaelmas.', issued: true,
+      # One of the four carries an override, on the subject where a written
+      # piece showed more than the marks did.
+      overrides: index.zero? ? { two_subjects[6] => ['A', 'The term paper was the best work he has done'] } : {},
+      subject_comments: index.zero? ? { two_subjects[0] => 'Algebra is clicking.' } : {}
+    )
+  end
+
+  aldermans[4..5].each do |student|
+    add_report_card(
+      two, student: student, title: 'Hilary term so far', from: ANCHOR, to: Date.current
+    )
+  end
+
   # 3: brand new. No students, no events, no subjects: every empty state at once.
   demo_teacher(email: 'teacher3@test.com', first_name: 'Priya', last_name: 'Raghavan')
 
@@ -1030,7 +1130,7 @@ Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.ea
   puts format(
     '  %-20s %-24s students: %2d (+%d removed)  events: %4d (%d series)  tasks: %2d (%d open, %d theirs, %d repeating)  ' \
     'subjects: %2d  types: %d (%d custom)  assignments: %2d (%d weighted by hand)  ' \
-    'grades: %3d (%d marked, %d by letter)  %s',
+    'grades: %3d (%d marked, %d by letter)  cards: %d (%d issued, %d versions)  %s',
     teacher.email, teacher.full_name,
     teacher.students.active.count, teacher.students.where(is_active: false).count,
     teacher.calendar_events.count,
@@ -1048,6 +1148,8 @@ Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.ea
     AssignmentGrade.joins(:assignment)
                    .where(assignments: { teacher_id: teacher.id })
                    .where.not(entered_letter: nil).count,
+    teacher.report_cards.select(:group_id).distinct.count,
+    teacher.report_cards.issued.count, teacher.report_cards.count,
     teacher.effective_time_zone
   )
 end

@@ -17,6 +17,13 @@ Rails.application.routes.draw do
         get 'progress', to: 'progress#show'
       end
 
+      # issue freezes a card, refresh pulls an unissued version's figures back
+      # up to date, and versions lists every version of one card.
+      resources :report_cards, only: %i[index show create update destroy] do
+        post :issue, :refresh, on: :member
+        get :versions, on: :member
+      end
+
       resources :assignment_types, only: %i[index create update destroy]
 
       resources :assignments, only: %i[index show create update destroy] do

@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
-class Teacher < ApplicationRecord
+# Every association in the app hangs off a teacher, so this class grows by one
+# line each time a feature ships. Splitting it to satisfy the length cop would
+# scatter eight one line associations across a concern that exists only for the
+# linter, which is worse code than a class that is one line over.
+class Teacher < ApplicationRecord # rubocop:disable Metrics/ClassLength
   has_secure_password
 
   # Used when a teacher has no zone of their own. The column stays nullable and
@@ -15,6 +19,7 @@ class Teacher < ApplicationRecord
   has_many :tasks, dependent: :destroy
   has_many :assignments, dependent: :destroy
   has_many :assignment_types, dependent: :destroy
+  has_many :report_cards, dependent: :destroy
 
   # Validations
   validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }

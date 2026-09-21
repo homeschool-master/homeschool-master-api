@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_20_180200) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_21_100200) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -121,6 +121,52 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_20_180200) do
     t.index ["token"], name: "index_refresh_tokens_on_token", unique: true
   end
 
+  create_table "report_card_entries", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "report_card_id", null: false
+    t.uuid "subject_id"
+    t.string "subject_name", null: false
+    t.decimal "percentage", precision: 5, scale: 2
+    t.string "letter"
+    t.decimal "points_earned", precision: 10, scale: 2
+    t.decimal "points_possible", precision: 10, scale: 2
+    t.integer "assigned_count"
+    t.integer "graded_count"
+    t.integer "ungraded_count"
+    t.jsonb "assignments"
+    t.string "override_letter"
+    t.text "override_reason"
+    t.text "comments"
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["report_card_id", "subject_id"], name: "index_report_card_entries_on_report_card_id_and_subject_id", unique: true
+    t.index ["report_card_id"], name: "index_report_card_entries_on_report_card_id"
+    t.index ["subject_id"], name: "index_report_card_entries_on_subject_id"
+  end
+
+  create_table "report_cards", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "teacher_id", null: false
+    t.uuid "student_id", null: false
+    t.uuid "group_id", null: false
+    t.integer "version", default: 1, null: false
+    t.string "title", null: false
+    t.date "period_start", null: false
+    t.date "period_end", null: false
+    t.text "comments"
+    t.decimal "overall_percentage", precision: 5, scale: 2
+    t.string "overall_letter"
+    t.string "overall_override_letter"
+    t.text "overall_override_reason"
+    t.datetime "issued_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.datetime "captured_at"
+    t.index ["group_id", "version"], name: "index_report_cards_on_group_id_and_version", unique: true
+    t.index ["student_id", "period_start"], name: "index_report_cards_on_student_id_and_period_start"
+    t.index ["student_id"], name: "index_report_cards_on_student_id"
+    t.index ["teacher_id"], name: "index_report_cards_on_teacher_id"
+  end
+
   create_table "students", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "teacher_id", null: false
     t.string "first_name", null: false
@@ -227,6 +273,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_20_180200) do
   add_foreign_key "event_attendees", "students", on_delete: :cascade
   add_foreign_key "recurrence_exceptions", "recurrences", on_delete: :cascade
   add_foreign_key "refresh_tokens", "teachers"
+  add_foreign_key "report_card_entries", "report_cards", on_delete: :cascade
+  add_foreign_key "report_card_entries", "subjects", on_delete: :nullify
+  add_foreign_key "report_cards", "students", on_delete: :cascade
+  add_foreign_key "report_cards", "teachers"
   add_foreign_key "students", "teachers"
   add_foreign_key "subjects", "teachers"
   add_foreign_key "task_completions", "tasks", on_delete: :cascade
