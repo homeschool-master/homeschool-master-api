@@ -34,7 +34,8 @@ class ProgressReport
       from: @from,
       to: @to,
       subjects: subjects,
-      overall: summarize(all_rows)
+      overall: summarize(all_rows),
+      undated: undated_rows.map { |row| ProgressEntrySerializer.render(row) }
     }
   end
 
@@ -47,7 +48,7 @@ class ProgressReport
               .where(student_id: @student.id)
               .joins(:assignment)
               .merge(Assignment.due_between(@from, @to))
-              .includes(assignment: :subject)
+              .includes(assignment: %i[subject assignment_type])
               .to_a
   end
 
@@ -62,8 +63,35 @@ class ProgressReport
       .map { |subject, subject_rows| subject_summary(subject, subject_rows) }
   end
 
+  # The work that produced the figures, alongside them. The gradebook lists
+  # exactly these rows under exactly this percentage, so the two cannot drift:
+  # there is one pass over one set of rows, and the list is what it summed.
   def subject_summary(subject, subject_rows)
-    { subject_id: subject.id, subject_name: subject.name }.merge(summarize(subject_rows))
+    { subject_id: subject.id, subject_name: subject.name }
+      .merge(summarize(subject_rows))
+      .merge(assignments: ordered(subject_rows).map { |row| ProgressEntrySerializer.render(row) })
+  end
+
+  # Due date ascending with creation order breaking ties, the same order the
+  # assignments endpoint uses: a subject reads as a term running forwards.
+  def ordered(subject_rows)
+    subject_rows.sort_by do |row|
+      [row.assignment.due_date || Date.new(9999, 12, 31), row.assignment.created_at]
+    end
+  end
+
+  # Work with no due date sits in no period, so it is in none of the figures
+  # above. It is still this student's work, so it is reported rather than
+  # silently dropped: a page that showed only the range would leave a teacher
+  # wondering where it went.
+  def undated_rows
+    @undated_rows ||= AssignmentGrade
+                      .where(student_id: @student.id)
+                      .joins(:assignment)
+                      .where(assignments: { due_date: nil })
+                      .includes(assignment: %i[subject assignment_type])
+                      .to_a
+                      .sort_by { |row| [row.assignment.subject.name.to_s.downcase, row.assignment.created_at] }
   end
 
   # The shared arithmetic, used for a single subject and for the overall figure.

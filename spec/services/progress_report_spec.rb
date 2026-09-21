@@ -234,4 +234,163 @@ RSpec.describe ProgressReport do
       expect(result[:overall][:assigned_count]).to eq(0)
     end
   end
+  # The list a gradebook draws, produced by the same pass that produces the
+  # percentages above it, so the two cannot disagree.
+  describe 'the work behind the figures' do
+    let(:teacher) { FactoryBot.create(:teacher) }
+    let(:student) { FactoryBot.create(:student, teacher: teacher) }
+    let(:math) { FactoryBot.create(:subject, teacher: teacher, name: 'Math') }
+
+    def defaults
+      { possible: 100, weight: 1, earned: nil, due: Date.new(2026, 9, 10),
+        letter: nil, type: 'Assignment' }
+    end
+
+    def work(title:, **overrides)
+      options = defaults.merge(overrides)
+      mark(build_work(title, options), options)
+    end
+
+    def build_work(title, options)
+      FactoryBot.create(:assignment, teacher: teacher, subject: math, title: title,
+                                     points_possible: options[:possible], weight: options[:weight],
+                                     due_date: options[:due],
+                                     assignment_type: teacher.assignment_types.find_by(name: options[:type]))
+    end
+
+    def mark(assignment, options)
+      grade = assignment.assignment_grades.build(student: student)
+      options[:letter] ? grade.apply_letter(options[:letter]) : grade.points_earned = options[:earned]
+      grade.save!
+      assignment
+    end
+
+    def report
+      described_class.call(student: student, from: Date.new(2026, 9, 1), to: Date.new(2026, 9, 30))
+    end
+
+    def entries
+      report[:subjects].first[:assignments]
+    end
+
+    it 'lists the work under the subject it belongs to' do
+      work(title: 'Chapter 4', earned: 90)
+      expect(entries.map { |entry| entry[:title] }).to eq(['Chapter 4'])
+    end
+
+    it 'names the kind of work' do
+      work(title: 'Unit test', earned: 90, type: 'Test')
+      expect(entries.first[:assignment_type_name]).to eq('Test')
+    end
+
+    it 'orders the work by due date' do
+      work(title: 'Later', due: Date.new(2026, 9, 20), earned: 1)
+      work(title: 'Earlier', due: Date.new(2026, 9, 2), earned: 1)
+
+      expect(entries.map { |entry| entry[:title] }).to eq(%w[Earlier Later])
+    end
+
+    it 'reports unmarked work as ungraded with no percentage, rather than as a zero' do
+      work(title: 'Not marked yet', earned: nil)
+      entry = entries.first
+
+      expect(entry[:graded]).to be(false)
+      expect(entry[:points_earned]).to be_nil
+      expect(entry[:percentage]).to be_nil
+      expect(entry[:letter]).to be_nil
+    end
+
+    it 'reports an explicit zero as a real mark of zero' do
+      work(title: 'Missed it', earned: 0)
+      entry = entries.first
+
+      expect(entry[:graded]).to be(true)
+      expect(entry[:points_earned]).to eq(0)
+      expect(entry[:percentage]).to eq(0)
+      expect(entry[:letter]).to eq('F')
+    end
+
+    it 'carries the weight, so work that counts nothing can say so' do
+      work(title: 'Practice', weight: 0, earned: 100)
+      expect(entries.first[:weight]).to eq(0)
+    end
+
+    it 'carries the letter a teacher entered, alongside the one the score derives to' do
+      work(title: 'Spelling', possible: 20, letter: 'B')
+      entry = entries.first
+
+      expect(entry[:entered_letter]).to eq('B')
+      expect(entry[:letter]).to eq('B')
+      expect(entry[:percentage]).to eq(85)
+    end
+
+    it 'leaves entered_letter empty for a mark typed as a number' do
+      work(title: 'Chapter 4', earned: 90)
+      expect(entries.first[:entered_letter]).to be_nil
+    end
+
+    it 'sums to the same percentage the figures report' do
+      work(title: 'Heavy', possible: 100, weight: 3, earned: 90)
+      work(title: 'Light', possible: 100, weight: 1, earned: 50)
+
+      subject_summary = report[:subjects].first
+      by_hand = entries.sum { |entry| entry[:weight] * entry[:percentage] } /
+                entries.sum { |entry| entry[:weight] }
+
+      expect(subject_summary[:percentage]).to eq(by_hand.round(2))
+    end
+  end
+
+  # Work with no due date is in no period, so it is in none of the figures. It
+  # is still reported, because a page that only showed the range would leave a
+  # teacher wondering where it went.
+  describe 'undated work' do
+    let(:teacher) { FactoryBot.create(:teacher) }
+    let(:student) { FactoryBot.create(:student, teacher: teacher) }
+    let(:math) { FactoryBot.create(:subject, teacher: teacher, name: 'Math') }
+
+    def report
+      described_class.call(student: student, from: Date.new(2026, 9, 1), to: Date.new(2026, 9, 30))
+    end
+
+    before do
+      dated = FactoryBot.create(:assignment, teacher: teacher, subject: math, title: 'Dated',
+                                             due_date: Date.new(2026, 9, 10), points_possible: 100)
+      FactoryBot.create(:assignment_grade, assignment: dated, student: student, points_earned: 100)
+
+      undated = FactoryBot.create(:assignment, teacher: teacher, subject: math, title: 'Memory work',
+                                               due_date: nil, points_possible: 10)
+      FactoryBot.create(:assignment_grade, assignment: undated, student: student, points_earned: 5)
+    end
+
+    it 'reports it separately' do
+      expect(report[:undated].map { |entry| entry[:title] }).to eq(['Memory work'])
+    end
+
+    it 'keeps it out of the subject figures' do
+      expect(report[:subjects].first[:assignments].map { |entry| entry[:title] }).to eq(['Dated'])
+      expect(report[:subjects].first[:percentage]).to eq(100)
+    end
+
+    it 'keeps it out of the overall figure' do
+      expect(report[:overall][:percentage]).to eq(100)
+      expect(report[:overall][:assigned_count]).to eq(1)
+    end
+
+    it 'carries the same detail as dated work, so it reads the same way' do
+      entry = report[:undated].first
+
+      expect(entry[:percentage]).to eq(50)
+      expect(entry[:due_date]).to be_nil
+      expect(entry[:graded]).to be(true)
+    end
+
+    it 'leaves another student\'s undated work out' do
+      other = FactoryBot.create(:student, teacher: teacher)
+      theirs = FactoryBot.create(:assignment, teacher: teacher, subject: math, title: 'Theirs', due_date: nil)
+      FactoryBot.create(:assignment_grade, assignment: theirs, student: other, points_earned: 1)
+
+      expect(report[:undated].map { |entry| entry[:title] }).to eq(['Memory work'])
+    end
+  end
 end
