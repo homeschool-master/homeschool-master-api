@@ -290,4 +290,121 @@ RSpec.describe 'Api::V1::Assignments', type: :request do
       expect(response).to have_http_status(:not_found)
     end
   end
+  # Whether a weight is the teacher's own is decided by whether she set it, not
+  # by what she set it to. The case that drove the change is a weight she types
+  # that happens to equal the default: under the old rule that counted as
+  # inherited, and the next change to the default moved work she had settled.
+  describe 'who owns an assignment weight' do
+    before do
+      @teacher = FactoryBot.create(:teacher)
+      sign_in(@teacher)
+      @subject = FactoryBot.create(:subject, teacher: @teacher)
+      @test_type = @teacher.assignment_types.find_by(name: 'Test')
+      @test_type.update!(default_weight: 3)
+    end
+
+    def create_assignment(params = {})
+      post api_v1_assignments_url, params: {
+        subject_id: @subject.id, assignment_type_id: @test_type.id, title: 'Unit test'
+      }.merge(params)
+      JSON.parse(response.body)['data']
+    end
+
+    def reload_weight(id)
+      Assignment.find(id).then { |a| [a.weight, a.weight_overridden] }
+    end
+
+    it 'inherits when no weight is sent at all' do
+      body = create_assignment
+
+      expect(body['weight'].to_f).to eq(3.0)
+      expect(body['weight_overridden']).to be(false)
+    end
+
+    it 'counts a weight she sent as hers' do
+      body = create_assignment(weight: 5)
+
+      expect(body['weight'].to_f).to eq(5.0)
+      expect(body['weight_overridden']).to be(true)
+    end
+
+    it 'counts a weight she sent as hers even when it equals the default' do
+      body = create_assignment(weight: 3)
+
+      expect(body['weight'].to_f).to eq(3.0)
+      expect(body['weight_overridden']).to be(true)
+    end
+
+    it 'leaves a weight she typed alone when the default later changes' do
+      body = create_assignment(weight: 3)
+      AssignmentTypeDefaultWeight.call(type: @test_type, weight: 5, mode: 'all')
+
+      expect(reload_weight(body['id'])).to eq([3, true])
+    end
+
+    it 'moves an inherited weight when the default later changes' do
+      body = create_assignment
+      AssignmentTypeDefaultWeight.call(type: @test_type, weight: 5, mode: 'all')
+
+      expect(reload_weight(body['id'])).to eq([5, false])
+    end
+
+    it 'leaves the weight and its owner alone on an edit that does not mention it' do
+      body = create_assignment(weight: 5)
+      patch api_v1_assignment_url(body['id']), params: { title: 'Renamed' }
+
+      expect(reload_weight(body['id'])).to eq([5, true])
+    end
+
+    it 'takes a weight on an edit as hers' do
+      body = create_assignment
+      patch api_v1_assignment_url(body['id']), params: { weight: 2 }
+
+      expect(reload_weight(body['id'])).to eq([2, true])
+    end
+
+    # The way back: a null weight hands the assignment to its type again.
+    it 'hands it back to the type default when the weight is cleared' do
+      body = create_assignment(weight: 5)
+      patch api_v1_assignment_url(body['id']), params: { weight: nil }.to_json,
+                                               headers: { 'Content-Type' => 'application/json' }
+
+      expect(reload_weight(body['id'])).to eq([3, false])
+    end
+
+    it 'follows the default again after being handed back' do
+      body = create_assignment(weight: 5)
+      patch api_v1_assignment_url(body['id']), params: { weight: nil }.to_json,
+                                               headers: { 'Content-Type' => 'application/json' }
+      AssignmentTypeDefaultWeight.call(type: @test_type, weight: 4, mode: 'all')
+
+      expect(reload_weight(body['id'])).to eq([4, false])
+    end
+
+    it 'allows zero, which is how practice work counts for nothing' do
+      body = create_assignment(weight: 0)
+
+      expect(body['weight'].to_f).to eq(0.0)
+      expect(body['weight_overridden']).to be(true)
+    end
+
+    # No cap: a large weight is a real thing to want, and the form warns rather
+    # than refusing. A negative one is not.
+    it 'allows a large weight' do
+      body = create_assignment(weight: 30)
+
+      expect(response).to have_http_status(:created)
+      expect(body['weight'].to_f).to eq(30.0)
+    end
+
+    it 'refuses a negative weight' do
+      create_assignment(weight: -1)
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+
+    it 'refuses a negative default weight on a type' do
+      patch api_v1_assignment_type_url(@test_type), params: { default_weight: -1 }
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+  end
 end
