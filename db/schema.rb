@@ -10,10 +10,38 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_21_100200) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_21_235800) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
+
+  create_table "active_storage_attachments", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "record_type", null: false
+    t.uuid "record_id", null: false
+    t.bigint "blob_id", null: false
+    t.datetime "created_at", null: false
+    t.index ["blob_id"], name: "index_active_storage_attachments_on_blob_id"
+    t.index ["record_type", "record_id", "name", "blob_id"], name: "index_active_storage_attachments_uniqueness", unique: true
+  end
+
+  create_table "active_storage_blobs", force: :cascade do |t|
+    t.string "key", null: false
+    t.string "filename", null: false
+    t.string "content_type"
+    t.text "metadata"
+    t.string "service_name", null: false
+    t.bigint "byte_size", null: false
+    t.string "checksum"
+    t.datetime "created_at", null: false
+    t.index ["key"], name: "index_active_storage_blobs_on_key", unique: true
+  end
+
+  create_table "active_storage_variant_records", force: :cascade do |t|
+    t.bigint "blob_id", null: false
+    t.string "variation_digest", null: false
+    t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
 
   create_table "assignment_grades", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
     t.uuid "assignment_id", null: false
@@ -72,6 +100,28 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_21_100200) do
     t.string "created_time_zone"
     t.index ["teacher_id", "start_time"], name: "index_calendar_events_on_teacher_id_and_start_time"
     t.index ["teacher_id"], name: "index_calendar_events_on_teacher_id"
+  end
+
+  create_table "document_attachments", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "document_id", null: false
+    t.string "attachable_type", null: false
+    t.uuid "attachable_id", null: false
+    t.date "occurrence_date"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["attachable_type", "attachable_id"], name: "idx_on_attachable_type_attachable_id_5ef51a0265"
+    t.index ["document_id", "attachable_type", "attachable_id", "occurrence_date"], name: "index_document_attachments_on_occurrence", unique: true, where: "(occurrence_date IS NOT NULL)"
+    t.index ["document_id", "attachable_type", "attachable_id"], name: "index_document_attachments_on_whole_record", unique: true, where: "(occurrence_date IS NULL)"
+    t.index ["document_id"], name: "index_document_attachments_on_document_id"
+  end
+
+  create_table "documents", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
+    t.uuid "teacher_id", null: false
+    t.string "title", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["teacher_id", "created_at"], name: "index_documents_on_teacher_id_and_created_at"
+    t.index ["teacher_id"], name: "index_documents_on_teacher_id"
   end
 
   create_table "event_attendees", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -262,6 +312,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_21_100200) do
     t.index ["password_reset_token"], name: "index_teachers_on_password_reset_token", unique: true
   end
 
+  add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "assignment_grades", "assignments", on_delete: :cascade
   add_foreign_key "assignment_grades", "students", on_delete: :cascade
   add_foreign_key "assignment_types", "teachers", on_delete: :cascade
@@ -269,6 +321,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_21_100200) do
   add_foreign_key "assignments", "subjects"
   add_foreign_key "assignments", "teachers"
   add_foreign_key "calendar_events", "teachers", on_delete: :cascade
+  add_foreign_key "document_attachments", "documents", on_delete: :cascade
+  add_foreign_key "documents", "teachers", on_delete: :cascade
   add_foreign_key "event_attendees", "calendar_events", on_delete: :cascade
   add_foreign_key "event_attendees", "students", on_delete: :cascade
   add_foreign_key "recurrence_exceptions", "recurrences", on_delete: :cascade

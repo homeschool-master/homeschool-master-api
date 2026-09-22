@@ -24,6 +24,12 @@ class Task < ApplicationRecord
   # completion is the completed_at column below.
   has_many :task_completions, dependent: :destroy
 
+  # Files filed against this record. Destroying the record takes the join rows
+  # with it and leaves the documents themselves alone: a receipt outlives the
+  # event it was filed against.
+  has_many :document_attachments, as: :attachable, dependent: :destroy
+  has_many :documents, through: :document_attachments
+
   # Validations
   validates :title, presence: true, length: { maximum: 255 }
   validates :owned_by, inclusion: { in: OWNERS }

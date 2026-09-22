@@ -15,6 +15,12 @@ class Assignment < ApplicationRecord
   has_many :assignment_grades, dependent: :destroy
   has_many :students, through: :assignment_grades
 
+  # Files filed against this record. Destroying the record takes the join rows
+  # with it and leaves the documents themselves alone: a receipt outlives the
+  # event it was filed against.
+  has_many :document_attachments, as: :attachable, dependent: :destroy
+  has_many :documents, through: :document_attachments
+
   # Validations
   validates :title, presence: true, length: { maximum: 255 }
   validates :points_possible, numericality: { greater_than: 0 }

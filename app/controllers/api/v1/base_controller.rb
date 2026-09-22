@@ -9,6 +9,7 @@ module Api
       include ActionController::HttpAuthentication::Token::ControllerMethods
 
       before_action :authenticate_request
+      before_action :set_active_storage_url_options
 
       attr_reader :current_teacher
 
@@ -40,6 +41,16 @@ module Api
         return nil unless header
 
         header.split.last
+      end
+
+      # The Disk service needs to know the host before it can build a URL, and
+      # an API only controller does not get that set for it the way
+      # ActionController::Base does. Without this every download in
+      # development raises rather than serving the file.
+      def set_active_storage_url_options
+        ActiveStorage::Current.url_options = {
+          protocol: request.protocol, host: request.host, port: request.port
+        }
       end
 
       def render_success(data, status: :ok, meta: nil)

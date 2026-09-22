@@ -2,6 +2,7 @@
 
 Rails.application.routes.draw do
   draw(:auth)
+  draw(:documents)
 
   namespace :api do
     namespace :v1 do
