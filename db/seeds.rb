@@ -107,6 +107,10 @@ def demo_teacher(email:, first_name:, last_name:, time_zone: Teacher::DEFAULT_TI
   # belong to, so a rebuild starts from nothing rather than from half a card.
   teacher.report_cards.destroy_all
   teacher.subjects.destroy_all
+  # The file goes with the row. purge rather than purge_later because a seed
+  # that leaves the bytes behind fills the bucket a little more on every run.
+  teacher.documents.each { |document| document.file.purge }
+  teacher.documents.destroy_all
   teacher
 end
 
@@ -148,6 +152,36 @@ def add_task(teacher, title:, due: nil, notes: nil, done_days_ago: nil, students
     owned_by: owned_by,
     students: Array(students)
   )
+end
+
+SEED_FILE_TYPES = {
+  '.png' => 'image/png',
+  '.pdf' => 'application/pdf',
+  '.txt' => 'text/plain'
+}.freeze
+
+# A document with a real file behind it, taken from db/seed_files. Those
+# placeholders are a few hundred bytes each: enough to open and look at,
+# small enough to live in the repository.
+#
+# filed_against is a list of pairs, [record, occurrence_date]. A nil date means
+# the record itself, which for a repeating event or task is the whole series; a
+# date means that one occurrence and no other. An empty list is a document
+# filed against nothing, which is what the library's unattached view is for.
+def add_document(teacher, title:, file:, filed_against: [])
+  document = teacher.documents.build(title: title)
+  document.file.attach(
+    io: Rails.root.join('db/seed_files', file).open,
+    filename: file,
+    content_type: SEED_FILE_TYPES.fetch(File.extname(file))
+  )
+  document.save!
+
+  filed_against.each do |record, occurrence_date|
+    document.document_attachments.create!(attachable: record, occurrence_date: occurrence_date)
+  end
+
+  document
 end
 
 # scores maps a student to what they earned. nil is work the student holds but
@@ -409,9 +443,9 @@ ActiveRecord::Base.transaction do
     add_event(one, title: title, date: weekday(3 + (index * 6)), students: whitfields, notes: notes)
   end
 
-  add_event(one, title: 'Piano recital', date: weekday(12), hour: [17, 0], minutes: 120,
-                 students: [departed, whitfields[0]], location: 'Grace Chapel',
-                 notes: 'Naomi is accompanying her sister.')
+  recital = add_event(one, title: 'Piano recital', date: weekday(12), hour: [17, 0], minutes: 120,
+                           students: [departed, whitfields[0]], location: 'Grace Chapel',
+                           notes: 'Naomi is accompanying her sister.')
 
   # Her repeating timetable, and the reference set for how a series behaves.
   #
@@ -438,7 +472,7 @@ ActiveRecord::Base.transaction do
 
   # The same weekday position each month rather than the same date: the co-op
   # meets on the second Friday, whichever date that falls on.
-  repeat(
+  coop = repeat(
     add_event(one, title: 'Co-op morning', date: nth_weekday_of(ANCHOR, 5, 2), hour: [10, 0],
                    minutes: 180, students: whitfields, location: 'Grace Chapel'),
     frequency: 'monthly', monthly_anchor: 'weekday_position'
@@ -505,9 +539,9 @@ ActiveRecord::Base.transaction do
   # Triple weight inherited from Test rather than typed: the figure a teacher
   # most needs the counts beside, since the heaviest piece is the one still
   # outstanding.
-  add_assignment(one, subject: one_math, title: 'Unit 2 test', due: weekday(12),
-                      points: 50, weight: 3, type: one_test,
-                      scores: { eliza => 44, samuel => nil })
+  unit_test = add_assignment(one, subject: one_math, title: 'Unit 2 test', due: weekday(12),
+                                  points: 50, weight: 3, type: one_test,
+                                  scores: { eliza => 44, samuel => nil })
 
   # Marked by letter rather than by percentage: the row that has to show the
   # letter she chose when she opens it again.
@@ -562,8 +596,8 @@ ActiveRecord::Base.transaction do
 
   # Hers to do, about them: the pair that names students without handing the
   # work over, which is the distinction owned_by exists to record.
-  add_task(one, title: 'Book the science museum field trip', due: Date.current + 6,
-                notes: 'Group rate needs ten days notice.', students: whitfields)
+  museum_trip = add_task(one, title: 'Book the science museum field trip', due: Date.current + 6,
+                              notes: 'Group rate needs ten days notice.', students: whitfields)
   add_task(one, title: 'Print the reading log for October', done_days_ago: 1,
                 students: [ruth])
   add_task(one, title: 'Order Eliza a new recorder', due: Date.current + 9,
@@ -658,6 +692,39 @@ ActiveRecord::Base.transaction do
     add_task(one, title: 'Back up the school records', due: Date.current + 3),
     frequency: 'monthly', monthly_anchor: 'day_of_month'
   )
+
+
+  # Her documents, and the reference set for the library: every way a file can
+  # be filed is here, including the two that are easy to get wrong.
+  #
+  # Against one piece of work.
+  add_document(one, title: 'Unit 2 test paper', file: 'worksheet.png',
+                    filed_against: [[unit_test, nil]])
+  # Against one to-do.
+  add_document(one, title: 'Museum trip permission slip', file: 'permission-slip.pdf',
+                    filed_against: [[museum_trip, nil]])
+  # Against one event.
+  add_document(one, title: 'Recital programme', file: 'worksheet.png',
+                    filed_against: [[recital, nil]])
+
+  # Against one occurrence of a repeating event: this receipt is next month's
+  # co-op morning, not every co-op morning there will ever be. The date is what
+  # makes the difference, and the second Friday is whatever date it lands on.
+  add_document(one, title: 'Co-op receipt, next month', file: 'receipt.png',
+                    filed_against: [[coop, nth_weekday_of(ANCHOR.next_month, 5, 2)]])
+  # The same thing on a repeating task, three weeks along: past the week she
+  # edited and the week she skipped, so it is plainly one week's bill.
+  add_document(one, title: 'Internet bill for the reimbursement', file: 'receipt.png',
+                    filed_against: [[reimbursement, last_weekday(5) + 21]])
+
+  # One document in three places at once, which is the case the join table
+  # exists for: the order covers the test paper, the trip and the recital.
+  add_document(one, title: 'Curriculum order, autumn', file: 'statement.pdf',
+                    filed_against: [[unit_test, nil], [museum_trip, nil], [recital, nil]])
+
+  # Filed against nothing: uploaded and left in the library, which is what the
+  # unattached view is for.
+  add_document(one, title: 'Reading list for next term', file: 'reading-list.txt')
 
   # 2: a heavy user. Ten students and a dense month, with one day loaded well
   # past the month grid's pill cap and the week column's scroll height.
@@ -894,6 +961,14 @@ ActiveRecord::Base.transaction do
       two, student: student, title: 'Hilary term so far', from: ANCHOR, to: ANCHOR + 20
     )
   end
+
+
+  # Ten children means paperwork in bulk, so his library is not empty either:
+  # one filed against a whole repeating series rather than a single morning,
+  # and one still waiting to be filed.
+  add_document(two, title: 'Co-op enrolment forms', file: 'permission-slip.pdf',
+                    filed_against: [[assembly, nil]])
+  add_document(two, title: 'Book order, all ten', file: 'statement.pdf')
 
   # 3: brand new. No students, no events, no subjects: every empty state at once.
   demo_teacher(email: 'teacher3@test.com', first_name: 'Priya', last_name: 'Raghavan')
@@ -1144,7 +1219,8 @@ Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.ea
   puts format(
     '  %-20s %-24s students: %2d (+%d removed)  events: %4d (%d series)  tasks: %2d (%d open, %d theirs, %d repeating)  ' \
     'subjects: %2d  types: %d (%d custom)  assignments: %2d (%d weighted by hand)  ' \
-    'grades: %3d (%d marked, %d by letter)  cards: %d (%d issued, %d versions)  %s',
+    'grades: %3d (%d marked, %d by letter)  cards: %d (%d issued, %d versions)  ' \
+    'docs: %2d (%d filed in %d places, %d loose)  %s',
     teacher.email, teacher.full_name,
     teacher.students.active.count, teacher.students.where(is_active: false).count,
     teacher.calendar_events.count,
@@ -1164,6 +1240,10 @@ Teacher.where(email: SEED_EMAILS).sort_by { |t| t.email.delete('^0-9').to_i }.ea
                    .where.not(entered_letter: nil).count,
     teacher.report_cards.select(:group_id).distinct.count,
     teacher.report_cards.issued.count, teacher.report_cards.count,
+    teacher.documents.count,
+    teacher.documents.count - teacher.documents.unattached.count,
+    DocumentAttachment.where(document_id: teacher.documents.select(:id)).count,
+    teacher.documents.unattached.count,
     teacher.effective_time_zone
   )
 end

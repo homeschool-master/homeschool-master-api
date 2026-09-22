@@ -35,6 +35,7 @@ class EventSeriesEdit
     replacement = build_copy(attributes, student_ids)
     return replacement unless replacement.persisted?
 
+    DocumentAttachment.move_occurrence(@event, replacement, @occurrence_date)
     except_with(replacement.id)
     replacement
   end
@@ -48,6 +49,7 @@ class EventSeriesEdit
 
     successor.create_recurrence!(rule_attributes)
     move_later_exceptions_to(successor.recurrence)
+    DocumentAttachment.move_occurrences_from(@event, successor, @occurrence_date)
     stop_original_before_the_occurrence
     successor
   end

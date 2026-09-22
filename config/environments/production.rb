@@ -32,7 +32,23 @@ Rails.application.configure do
   # config.action_dispatch.x_sendfile_header = "X-Accel-Redirect" # for NGINX
 
   # Store uploaded files on the local file system (see config/storage.yml for options).
-  config.active_storage.service = :local
+  # Private S3 bucket. See docs/aws-setup.md in the docs repo for the bucket,
+  # the IAM policy and the config vars this expects.
+  config.active_storage.service = :amazon
+
+  # Active Storage's own routes are not drawn in production.
+  #
+  # Two of them are a problem here. /rails/active_storage/direct_uploads
+  # creates a blob for anyone who asks, signed in or not, and the blob
+  # redirect routes serve a file to anyone holding the signed id, which is a
+  # bearer token with no owner attached to it. This app uploads through
+  # /api/v1/documents/upload_url and serves through /api/v1/documents/:id/
+  # download, and both of those check who is asking.
+  #
+  # Nothing in production needs the engine's routes: the S3 service signs its
+  # own URLs. Development and test keep them, because the disk service serves
+  # files through them.
+  config.active_storage.draw_routes = false
 
   # Mount Action Cable outside main process or domain.
   # config.action_cable.mount_path = nil

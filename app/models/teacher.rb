@@ -20,6 +20,7 @@ class Teacher < ApplicationRecord
   has_many :assignments, dependent: :destroy
   has_many :assignment_types, dependent: :destroy
   has_many :report_cards, dependent: :destroy
+  has_many :documents, dependent: :destroy
 
   # Validations
   validates :first_name, presence: { message: "can't be blank" }, length: { maximum: 100 }

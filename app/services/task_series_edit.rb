@@ -31,6 +31,7 @@ class TaskSeriesEdit
     return replacement unless replacement.persisted?
 
     consume_completion
+    DocumentAttachment.move_occurrence(@task, replacement, @occurrence_date)
     except_with(replacement.id)
     replacement
   end
@@ -44,6 +45,7 @@ class TaskSeriesEdit
 
     successor.create_recurrence!(rule_attributes)
     move_later_exceptions_to(successor.recurrence)
+    DocumentAttachment.move_occurrences_from(@task, successor, @occurrence_date)
     move_later_completions_to(successor)
     stop_original_before_the_occurrence
     successor
